@@ -1,6 +1,87 @@
 {
  "components": {
   "schemas": {
+   "BankBody": {
+    "properties": {
+     "account": {
+      "default": "",
+      "title": "Account",
+      "type": "string"
+     },
+     "bank_name": {
+      "default": "",
+      "title": "Bank Name",
+      "type": "string"
+     },
+     "from_invoice": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "From Invoice"
+     },
+     "reason": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Reason"
+     },
+     "routing": {
+      "default": "",
+      "title": "Routing",
+      "type": "string"
+     }
+    },
+    "title": "BankBody",
+    "type": "object"
+   },
+   "Body_upload_api_ap_invoices_post": {
+    "properties": {
+     "file": {
+      "format": "binary",
+      "title": "File",
+      "type": "string"
+     }
+    },
+    "required": [
+     "file"
+    ],
+    "title": "Body_upload_api_ap_invoices_post",
+    "type": "object"
+   },
+   "CallbackBody": {
+    "properties": {
+     "confirmed": {
+      "title": "Confirmed",
+      "type": "boolean"
+     },
+     "notes": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Notes"
+     }
+    },
+    "required": [
+     "confirmed"
+    ],
+    "title": "CallbackBody",
+    "type": "object"
+   },
    "CreateBody": {
     "properties": {
      "description": {
@@ -381,6 +462,28 @@
     "title": "ValidationError",
     "type": "object"
    },
+   "VerifyBody": {
+    "properties": {
+     "fields": {
+      "additionalProperties": true,
+      "title": "Fields",
+      "type": "object"
+     },
+     "reason": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Reason"
+     }
+    },
+    "title": "VerifyBody",
+    "type": "object"
+   },
    "app__tools__refunds__routes__ReasonBody": {
     "properties": {
      "reason": {
@@ -450,6 +553,859 @@
     "summary": "Access Matrix Route",
     "tags": [
      "core"
+    ]
+   }
+  },
+  "/api/ap/bank-changes": {
+   "get": {
+    "operationId": "bank_changes_api_ap_bank_changes_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "additionalProperties": true,
+          "type": "object"
+         },
+         "title": "Response Bank Changes Api Ap Bank Changes Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Bank Changes",
+    "tags": [
+     "ap"
+    ]
+   }
+  },
+  "/api/ap/bank-changes/{bid}": {
+   "get": {
+    "operationId": "bank_change_detail_api_ap_bank_changes__bid__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "bid",
+      "required": true,
+      "schema": {
+       "title": "Bid",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Bank Change Detail Api Ap Bank Changes  Bid  Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Bank Change Detail",
+    "tags": [
+     "ap"
+    ]
+   }
+  },
+  "/api/ap/bank-changes/{bid}/callback": {
+   "post": {
+    "operationId": "callback_api_ap_bank_changes__bid__callback_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "bid",
+      "required": true,
+      "schema": {
+       "title": "Bid",
+       "type": "integer"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CallbackBody"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Callback Api Ap Bank Changes  Bid  Callback Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Callback",
+    "tags": [
+     "ap"
+    ]
+   }
+  },
+  "/api/ap/batches": {
+   "get": {
+    "operationId": "batches_api_ap_batches_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "additionalProperties": true,
+          "type": "object"
+         },
+         "title": "Response Batches Api Ap Batches Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Batches",
+    "tags": [
+     "ap"
+    ]
+   },
+   "post": {
+    "operationId": "create_batch_api_ap_batches_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/app__tools__refunds__routes__ReasonBody"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Create Batch Api Ap Batches Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Create Batch",
+    "tags": [
+     "ap"
+    ]
+   }
+  },
+  "/api/ap/batches/{bid}/file": {
+   "get": {
+    "operationId": "batch_file_api_ap_batches__bid__file_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "bid",
+      "required": true,
+      "schema": {
+       "title": "Bid",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "reason",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Reason"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Batch File",
+    "tags": [
+     "ap"
+    ]
+   }
+  },
+  "/api/ap/inbox/poll": {
+   "post": {
+    "operationId": "poll_api_ap_inbox_poll_post",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Poll Api Ap Inbox Poll Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Poll",
+    "tags": [
+     "ap"
+    ]
+   }
+  },
+  "/api/ap/invoices": {
+   "get": {
+    "operationId": "list_invoices_api_ap_invoices_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "status",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Status"
+      }
+     },
+     {
+      "in": "query",
+      "name": "q",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Q"
+      }
+     },
+     {
+      "in": "query",
+      "name": "page",
+      "required": false,
+      "schema": {
+       "default": 1,
+       "minimum": 1,
+       "title": "Page",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "page_size",
+      "required": false,
+      "schema": {
+       "default": 50,
+       "maximum": 200,
+       "minimum": 1,
+       "title": "Page Size",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response List Invoices Api Ap Invoices Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "List Invoices",
+    "tags": [
+     "ap"
+    ]
+   },
+   "post": {
+    "operationId": "upload_api_ap_invoices_post",
+    "requestBody": {
+     "content": {
+      "multipart/form-data": {
+       "schema": {
+        "$ref": "#/components/schemas/Body_upload_api_ap_invoices_post"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Upload Api Ap Invoices Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Upload",
+    "tags": [
+     "ap"
+    ]
+   }
+  },
+  "/api/ap/invoices/{iid}": {
+   "get": {
+    "operationId": "detail_api_ap_invoices__iid__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "iid",
+      "required": true,
+      "schema": {
+       "title": "Iid",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Detail Api Ap Invoices  Iid  Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Detail",
+    "tags": [
+     "ap"
+    ]
+   }
+  },
+  "/api/ap/invoices/{iid}/audit": {
+   "get": {
+    "operationId": "invoice_audit_api_ap_invoices__iid__audit_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "iid",
+      "required": true,
+      "schema": {
+       "title": "Iid",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "additionalProperties": true,
+          "type": "object"
+         },
+         "title": "Response Invoice Audit Api Ap Invoices  Iid  Audit Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Invoice Audit",
+    "tags": [
+     "ap"
+    ]
+   }
+  },
+  "/api/ap/invoices/{iid}/file": {
+   "get": {
+    "operationId": "invoice_file_api_ap_invoices__iid__file_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "iid",
+      "required": true,
+      "schema": {
+       "title": "Iid",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Invoice File",
+    "tags": [
+     "ap"
+    ]
+   }
+  },
+  "/api/ap/invoices/{iid}/reject": {
+   "post": {
+    "operationId": "reject_api_ap_invoices__iid__reject_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "iid",
+      "required": true,
+      "schema": {
+       "title": "Iid",
+       "type": "integer"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/app__tools__refunds__routes__ReasonBody"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Reject Api Ap Invoices  Iid  Reject Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Reject",
+    "tags": [
+     "ap"
+    ]
+   }
+  },
+  "/api/ap/invoices/{iid}/submit": {
+   "post": {
+    "operationId": "submit_api_ap_invoices__iid__submit_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "iid",
+      "required": true,
+      "schema": {
+       "title": "Iid",
+       "type": "integer"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/app__tools__refunds__routes__ReasonBody"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Submit Api Ap Invoices  Iid  Submit Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Submit",
+    "tags": [
+     "ap"
+    ]
+   }
+  },
+  "/api/ap/invoices/{iid}/verify": {
+   "post": {
+    "operationId": "verify_api_ap_invoices__iid__verify_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "iid",
+      "required": true,
+      "schema": {
+       "title": "Iid",
+       "type": "integer"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/VerifyBody"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Verify Api Ap Invoices  Iid  Verify Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Verify",
+    "tags": [
+     "ap"
+    ]
+   }
+  },
+  "/api/ap/stats": {
+   "get": {
+    "operationId": "stats_api_ap_stats_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Stats Api Ap Stats Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Stats",
+    "tags": [
+     "ap"
+    ]
+   }
+  },
+  "/api/ap/vendors": {
+   "get": {
+    "operationId": "vendors_api_ap_vendors_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "additionalProperties": true,
+          "type": "object"
+         },
+         "title": "Response Vendors Api Ap Vendors Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Vendors",
+    "tags": [
+     "ap"
+    ]
+   }
+  },
+  "/api/ap/vendors/{vid}/bank-changes": {
+   "post": {
+    "operationId": "bank_change_api_ap_vendors__vid__bank_changes_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "vid",
+      "required": true,
+      "schema": {
+       "title": "Vid",
+       "type": "integer"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/BankBody"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Bank Change Api Ap Vendors  Vid  Bank Changes Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Bank Change",
+    "tags": [
+     "ap"
+    ]
+   }
+  },
+  "/api/ap/vendors/{vid}/reveal": {
+   "post": {
+    "operationId": "reveal_api_ap_vendors__vid__reveal_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "vid",
+      "required": true,
+      "schema": {
+       "title": "Vid",
+       "type": "integer"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/app__tools__refunds__routes__RevealBody"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": {
+          "type": "string"
+         },
+         "title": "Response Reveal Api Ap Vendors  Vid  Reveal Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Reveal",
+    "tags": [
+     "ap"
     ]
    }
   },
