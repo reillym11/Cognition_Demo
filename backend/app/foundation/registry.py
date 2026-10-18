@@ -1,0 +1,138 @@
+"""Tool manifests and the registry the host builds at startup.
+
+A tool is a package under app/tools/<key>/ exposing `MANIFEST` in manifest.py. The host discovers
+tools by scanning that package, so adding a tool never edits host code.
+"""
+
+import importlib
+import pkgutil
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from typing import Any
+
+from fastapi import APIRouter
+from sqlalchemy.orm import Session
+
+from app.foundation.datacls import Classification
+
+
+@dataclass(frozen=True)
+class NavItem:
+    path: str
+    label: str
+    permission: str
+
+
+@dataclass(frozen=True)
+class Schedule:
+    job_kind: str
+    every_seconds: int
+
+
+@dataclass(frozen=True)
+class PolicyDef:
+    default: Any
+    description: str
+    kind: str = "int"  # int | cents | float | json
+
+
+@dataclass(frozen=True)
+class ApprovalKind:
+    """Hooks run inside the deciding transaction once a request closes."""
+
+    on_approved: Callable[[Session, Any], None]
+    on_rejected: Callable[[Session, Any], None] | None = None
+    label: str = ""
+
+
+@dataclass
+class ToolManifest:
+    key: str
+    name: str
+    description: str
+    permissions: dict[str, str]
+    grants: dict[str, list[str]]
+    router: APIRouter | None = None
+    nav: list[NavItem] = field(default_factory=list)
+    jobs: dict[str, Callable[[Session, dict[str, Any]], None]] = field(default_factory=dict)
+    schedules: list[Schedule] = field(default_factory=list)
+    policies: dict[str, PolicyDef] = field(default_factory=dict)
+    classifications: dict[str, dict[str, Classification]] = field(default_factory=dict)
+    approval_kinds: dict[str, ApprovalKind] = field(default_factory=dict)
+    seed: Callable[[Session, int], None] | None = None
+    seed_order: int = 100
+
+
+class Registry:
+    def __init__(self, manifests: list[ToolManifest]):
+        keys = [m.key for m in manifests]
+        if len(set(keys)) != len(keys):
+            raise RuntimeError(f"duplicate tool keys: {keys}")
+        self.manifests = manifests
+        self.permissions: dict[str, str] = {}
+        self.role_permissions: dict[str, set[str]] = {}
+        self.jobs: dict[str, Callable[[Session, dict[str, Any]], None]] = {}
+        self.policies: dict[str, PolicyDef] = {}
+        self.classifications: dict[str, dict[str, Classification]] = {}
+        self.approval_kinds: dict[str, ApprovalKind] = {}
+        for m in manifests:
+            for p, desc in m.permissions.items():
+                if not p.startswith(m.key + "."):
+                    raise RuntimeError(f"permission {p!r} must be namespaced under {m.key!r}")
+                self.permissions[p] = desc
+            for kind, fn in m.jobs.items():
+                self._unique(self.jobs, kind, fn, "job")
+            for k, pdef in m.policies.items():
+                self._unique(self.policies, k, pdef, "policy")
+            for res, fields in m.classifications.items():
+                self._unique(self.classifications, res, fields, "classification")
+            for kind, ak in m.approval_kinds.items():
+                self._unique(self.approval_kinds, kind, ak, "approval kind")
+        for m in manifests:
+            for role, perms in m.grants.items():
+                for p in perms:
+                    if p not in self.permissions:
+                        raise RuntimeError(f"tool {m.key} grants unknown permission {p!r}")
+                self.role_permissions.setdefault(role, set()).update(perms)
+
+    @staticmethod
+    def _unique(d: dict[str, Any], k: str, v: Any, what: str) -> None:
+        if k in d:
+            raise RuntimeError(f"duplicate {what} {k!r}")
+        d[k] = v
+
+    def permissions_for(self, roles: frozenset[str]) -> frozenset[str]:
+        out: set[str] = set()
+        for r in roles:
+            out |= self.role_permissions.get(r, set())
+        return frozenset(out)
+
+    def manifest(self, key: str) -> ToolManifest:
+        for m in self.manifests:
+            if m.key == key:
+                return m
+        raise KeyError(key)
+
+
+def discover() -> list[ToolManifest]:
+    import app.tools
+
+    from app.foundation.core_manifest import MANIFEST as CORE
+
+    found = [CORE]
+    for mod in sorted(pkgutil.iter_modules(app.tools.__path__), key=lambda m: m.name):
+        if not mod.ispkg:
+            continue
+        manifest_mod = importlib.import_module(f"app.tools.{mod.name}.manifest")
+        found.append(manifest_mod.MANIFEST)
+    return found
+
+
+_registry: Registry | None = None
+
+
+def get_registry() -> Registry:
+    global _registry
+    if _registry is None:
+        _registry = Registry(discover())
+    return _registry

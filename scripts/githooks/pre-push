@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Pre-push gate (Option B: direct commits to main, so this + CI is the safety net).
+set -euo pipefail
+root=$(git rev-parse --show-toplevel)
+range="@{u}..HEAD"
+git rev-parse @{u} >/dev/null 2>&1 || range="HEAD"
+if git diff --name-only $range 2>/dev/null | grep -qE "$(paste -sd'|' "$root/PROTECTED_PATHS")"; then
+  echo "WARNING: this push touches protected paths (see PROTECTED_PATHS). It will be listed in the protected-path review issue."
+fi
+if [[ "${SKIP_CHECK:-}" != "1" ]]; then
+  make -C "$root" check
+fi

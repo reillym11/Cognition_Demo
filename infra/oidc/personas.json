@@ -1,0 +1,22 @@
+{
+  "_comment": "Synthetic personas. Entra app roles go in the `roles` claim. `region` models a directory extension attribute used for row scopes.",
+  "personas": [
+    {"username": "ana.analyst", "name": "Ana Analyst", "oid": "00000000-0000-4000-8000-000000000001", "roles": ["KYC.Analyst"], "region": "US", "persona": "Compliance analyst"},
+    {"username": "avery.analyst", "name": "Avery Analyst", "oid": "00000000-0000-4000-8000-000000000002", "roles": ["KYC.Analyst"], "region": "US", "persona": "Compliance analyst (second reviewer)"},
+    {"username": "sam.senior", "name": "Sam Senior", "oid": "00000000-0000-4000-8000-000000000003", "roles": ["KYC.Analyst", "KYC.SeniorReviewer"], "region": "US", "persona": "Senior compliance reviewer"},
+    {"username": "cora.compliance", "name": "Cora Compliance", "oid": "00000000-0000-4000-8000-000000000004", "roles": ["Compliance.Admin"], "region": "US", "persona": "Compliance admin"},
+    {"username": "alex.agent", "name": "Alex Agent", "oid": "00000000-0000-4000-8000-000000000005", "roles": ["Support.Agent"], "region": "US", "persona": "Support agent"},
+    {"username": "casey.contractor", "name": "Casey Contractor", "oid": "00000000-0000-4000-8000-000000000006", "roles": ["Support.Contractor"], "region": "EU", "persona": "Contractor support agent (EU merchants only)"},
+    {"username": "fin.approver", "name": "Fin Approver", "oid": "00000000-0000-4000-8000-000000000007", "roles": ["Finance.Approver"], "region": "US", "persona": "Finance approver"},
+    {"username": "erin.engineer", "name": "Erin Engineer", "oid": "00000000-0000-4000-8000-000000000008", "roles": ["Eng.Engineer"], "region": "US", "persona": "Engineer"},
+    {"username": "pat.pm", "name": "Pat PM", "oid": "00000000-0000-4000-8000-000000000009", "roles": ["Eng.PM"], "region": "US", "persona": "Product manager"},
+    {"username": "pia.platform", "name": "Pia Platform", "oid": "00000000-0000-4000-8000-000000000010", "roles": ["Platform.Admin"], "region": "US", "persona": "Platform admin"},
+    {"username": "aud.auditor", "name": "Aud Auditor", "oid": "00000000-0000-4000-8000-000000000011", "roles": ["Audit.Auditor"], "region": "US", "persona": "Internal auditor (read-only)"},
+    {"username": "hana.handler", "name": "Hana Handler", "oid": "00000000-0000-4000-8000-000000000012", "roles": ["Complaints.Handler"], "region": "US", "persona": "Complaints handler"},
+    {"username": "hugo.handler", "name": "Hugo Handler", "oid": "00000000-0000-4000-8000-000000000013", "roles": ["Complaints.Handler"], "region": "US", "persona": "Complaints handler (second)"},
+    {"username": "cleo.clerk", "name": "Cleo Clerk", "oid": "00000000-0000-4000-8000-000000000014", "roles": ["AP.Clerk"], "region": "US", "persona": "AP clerk"},
+    {"username": "abe.approver", "name": "Abe Approver", "oid": "00000000-0000-4000-8000-000000000015", "roles": ["AP.Approver"], "region": "US", "persona": "AP approver (tier 1)"},
+    {"username": "cam.controller", "name": "Cam Controller", "oid": "00000000-0000-4000-8000-000000000016", "roles": ["AP.Approver", "Finance.Controller"], "region": "US", "persona": "Financial controller (tier 2)"},
+    {"username": "olly.overage", "name": "Olly Overage", "oid": "00000000-0000-4000-8000-000000000017", "roles": null, "region": "US", "persona": "User in >200 groups (groups overage, no app roles)", "overage": true}
+  ]
+}

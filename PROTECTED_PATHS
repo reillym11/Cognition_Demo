@@ -1,0 +1,10 @@
+^backend/app/foundation/auth
+^backend/app/foundation/authz
+^backend/app/foundation/audit
+^backend/app/foundation/approvals
+^backend/app/foundation/policy
+^backend/app/foundation/datacls
+^backend/app/foundation/files
+^backend/migrations/
+^infra/
+^\.github/

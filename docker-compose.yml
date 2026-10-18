@@ -1,0 +1,21 @@
+# Local-only stack. Credentials below are fixed local-dev values for a throwaway container, not secrets.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: postgres
+    ports: ["54320:5432"]
+    volumes:
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      retries: 30
+  oidc:
+    image: ghcr.io/navikt/mock-oauth2-server:2.1.10
+    ports: ["8081:8080"]
+    environment:
+      SERVER_PORT: "8080"
+      JSON_CONFIG_PATH: /config/config.json
+    volumes:
+      - ./infra/oidc:/config:ro
