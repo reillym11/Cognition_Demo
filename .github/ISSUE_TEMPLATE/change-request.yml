@@ -1,0 +1,45 @@
+name: Internal tool change request
+description: Ask for a change to an internal tool (no coding needed). Devin picks this up automatically.
+title: "[Change request] "
+labels: ["change-request"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the change in plain language. A Devin session reads this issue, makes the change on `main`
+        with tests, and replies here with the commit and CI result. Changes to approvals, permissions or audit
+        are flagged for an engineer before they count as done.
+  - type: dropdown
+    id: tool
+    attributes:
+      label: Which tool?
+      options: [KYC review, Refunds, Feature flags, Complaints, AP invoices, New tool, Platform / other]
+    validations:
+      required: true
+  - type: textarea
+    id: change
+    attributes:
+      label: What should change?
+      placeholder: "e.g. Add a 'Duplicate account' reason code to KYC rejections"
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why / business impact
+    validations:
+      required: true
+  - type: dropdown
+    id: urgency
+    attributes:
+      label: Urgency
+      options: [Low, Normal, High]
+    validations:
+      required: true
+  - type: checkboxes
+    id: data
+    attributes:
+      label: Data check
+      options:
+        - label: This request contains no real customer data
+          required: true
