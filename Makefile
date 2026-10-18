@@ -1,7 +1,7 @@
 # One entry point for both toolchains. Run `make help`.
 SHELL := /bin/bash
 export PATH := $(HOME)/.local/bin:$(HOME)/.local/node/bin:$(PATH)
-UV := cd backend && uv run
+UV := uv run --directory backend
 OWNER_URL ?= postgresql+psycopg://itp_owner:itp_owner@localhost:54320/itp
 TEST_OWNER_URL ?= postgresql+psycopg://itp_owner:itp_owner@localhost:54320/itp_test
 
@@ -40,7 +40,7 @@ demo-reset: ## drop + recreate dev DB, migrate, seed (target < 60 s)
 	$(MAKE) seed
 
 dev: up ## run api, worker, mocks and web together
-	cd backend && uv run honcho -d .. -f Procfile start
+	uv run --directory backend honcho -d .. -f Procfile start
 
 api:
 	$(UV) uvicorn app.host.asgi:app --port 8000 --reload
@@ -63,7 +63,7 @@ test: migrate-test ## backend unit + integration + property tests (real Postgres
 	$(UV) pytest --cov --cov-report=term-missing:skip-covered
 
 openapi: ## regenerate the TypeScript API client from FastAPI's OpenAPI schema
-	$(UV) python -m app.host.cli openapi > ../web/src/api/openapi.json
+	$(UV) python -m app.host.cli openapi > web/src/api/openapi.json
 	cd web && pnpm exec openapi-typescript src/api/openapi.json -o src/api/schema.d.ts
 
 openapi-check: openapi ## fail if the generated client drifted
@@ -85,7 +85,7 @@ audit-tamper-demo: ## modify one audit row as DB superuser, then show verificati
 	$(UV) python -m app.host.cli audit-tamper-demo
 
 access-matrix: ## regenerate docs/evidence/access-matrix.md
-	$(UV) python -m app.host.cli access-matrix > ../docs/evidence/access-matrix.md
+	$(UV) python -m app.host.cli access-matrix > docs/evidence/access-matrix.md
 
 new-tool: ## scaffold a tool: make new-tool name=my_tool
 	$(UV) python -m app.host.cli new-tool $(name)

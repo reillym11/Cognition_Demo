@@ -9,7 +9,7 @@ from app.foundation.authz import check_routes, require
 from app.foundation.db import session_scope
 from app.foundation.errors import Conflict, Forbidden, Invalid
 from app.foundation.money import Money
-from tests.conftest import principal
+from testing import principal
 
 
 def test_host_has_no_unprotected_routes(app):
@@ -99,7 +99,7 @@ def test_groups_overage_is_denied_with_clear_error():
 
 
 def test_audit_chain_verifies_and_detects_tampering():
-    from tests.conftest import SUPER
+    from testing import SUPER
 
     p = principal("aud.auditor")
     with session_scope() as db:
@@ -154,7 +154,7 @@ def test_policy_change_requires_someone_else(login):
     with session_scope() as db, pytest.raises(Forbidden):
         approvals.decide(db, cora, rid, "approve", "self")
     with session_scope() as db:
-        approvals.decide(db, pia, rid, "approve", "ok")
+        approvals.decide(db, pia, rid, "approve", "looks ok")
     with session_scope() as db:
         assert policy.get(db, key) == (12345 if isinstance(old, int) else 0.5)
         assert policy.current_version(db, key) == 2
@@ -191,6 +191,6 @@ def test_closed_request_rejects_decisions():
             db, cora, key, policy.validate(key, 1 if items[0]["kind"] != "float" else 0.1), "x y z"
         ).id
     with session_scope() as db:
-        approvals.decide(db, pia, rid, "reject", "no")
+        approvals.decide(db, pia, rid, "reject", "not now")
     with session_scope() as db, pytest.raises(Conflict):
         approvals.decide(db, principal("cam.controller"), rid, "approve", "late")

@@ -1,6 +1,8 @@
 import json
 import os
 from collections.abc import Callable, Iterator
+
+__all__ = ["PERSONAS", "SUPER", "app", "clean_db", "directory", "login", "principal"]
 from pathlib import Path
 
 os.environ.setdefault("ITP_DATABASE_URL", "postgresql+psycopg://itp_app:itp_app@localhost:54320/itp_test")
@@ -17,7 +19,7 @@ from app.foundation import auth, policy
 from app.foundation.adapters.directory import DirectoryEntry, set_directory
 from app.foundation.db import session_scope
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 PERSONAS = {p["username"]: p for p in json.loads((ROOT / "infra/oidc/personas.json").read_text())["personas"]}
 SUPER = create_engine("postgresql+psycopg://postgres:postgres@localhost:54320/itp_test")
 

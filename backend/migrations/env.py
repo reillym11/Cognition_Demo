@@ -14,7 +14,7 @@ for _m in discover():  # import every tool's models via its manifest
 LEAST_PRIVILEGE = """
 GRANT USAGE ON SCHEMA public TO itp_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO itp_app;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO itp_app;
+GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO itp_app;
 DO $$ BEGIN
   IF to_regclass('public.audit_events') IS NOT NULL THEN
     REVOKE UPDATE, DELETE, TRUNCATE ON audit_events FROM itp_app;
