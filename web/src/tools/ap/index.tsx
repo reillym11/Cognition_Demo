@@ -111,7 +111,7 @@ function Detail() {
   return (
     <Page title={`Invoice ${inv.invoice_number ?? `#${inv.id}`}`} actions={<Badge tone={TONE[inv.status]}>{inv.status}</Badge>}>
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card title="Document"><iframe title="Invoice PDF" src={`/api/ap/invoices/${inv.id}/file`} className="h-[520px] w-full rounded border" sandbox="" /></Card>
+        <Card title="Document"><iframe title="Invoice PDF" src={`/api/ap/invoices/${inv.id}/file`} className="h-[520px] w-full rounded border" /></Card>
         <div className="space-y-4">
           <Card title="Extracted">
             <KeyValues rows={[

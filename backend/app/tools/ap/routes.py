@@ -126,7 +126,7 @@ def invoice_file(
         headers={
             "Content-Disposition": f'inline; filename="{f.original_name}"',
             "X-Content-Type-Options": "nosniff",
-            "Content-Security-Policy": "sandbox",
+            "Content-Security-Policy": "default-src 'none'; frame-ancestors 'self'",
             "Cache-Control": "no-store",
         },
     )

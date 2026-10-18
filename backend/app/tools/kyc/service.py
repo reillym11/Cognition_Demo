@@ -228,7 +228,7 @@ def on_decision_approved(db: Session, req: ApprovalRequest) -> None:
         RES,
         c.id,
         chain=CHAIN,
-        reason=f"approval #{req.id}",
+        reason=f"approval #{req.id} by {last.decided_by_name or last.decided_by}: {last.reason}",
         after={"status": c.status, "code": c.decision_code, "decided_by": last.decided_by},
         retention_class="kyc_decision",
     )

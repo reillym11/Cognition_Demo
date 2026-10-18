@@ -217,6 +217,7 @@ export function ApprovalPanel({ approval, invalidate }: { approval: Approval; in
     await http("POST", `/api/approvals/${approval.id}/decide`, { decision, reason });
     invalidate.forEach((k) => qc.invalidateQueries({ queryKey: k }));
     qc.invalidateQueries({ queryKey: ["inbox"] });
+    qc.invalidateQueries({ predicate: (q) => String(q.queryKey[0]).endsWith("/audit") });
   };
   const tone = approval.status === "approved" ? "green" : approval.status === "rejected" ? "red" : "amber";
   return (

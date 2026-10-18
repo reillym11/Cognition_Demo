@@ -103,7 +103,7 @@ def login(return_to: str | None = None) -> RedirectResponse:
 
 
 def roles_from_claims(claims: dict[str, Any]) -> list[str]:
-    """Entra app roles first. Groups overage (>200 groups) omits `groups` and `roles` -> deny with a clear error."""
+    """Entra app roles first. Groups overage (>200 groups in a JWT) replaces `groups` with `_claim_names`; with no app roles -> deny with a clear error."""
     roles = claims.get("roles")
     if isinstance(roles, list) and roles:
         return sorted(str(r) for r in roles)
