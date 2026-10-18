@@ -48,7 +48,7 @@ Open http://localhost:5173, click **Sign in with Microsoft (mock)** and pick a p
 | `cleo.clerk`, `abe.approver`, `cam.controller` | AP clerk / approver / controller | Upload or poll an invoice, verify, approve, change bank details, export a batch |
 | `aud.auditor` | Audit.Auditor | Read-only everything + audit explorer |
 | `pia.platform` | Platform.Admin | Policies, jobs, access matrix |
-| `olly.overage` | (groups overage) | Shows the >200-groups token path with no roles → denied |
+| `olly.overage` | (groups overage) | Shows the >200-groups token path with no roles → denied (Entra drops `groups` above 200 for JWT and sends an overage claim — [Microsoft Learn](https://learn.microsoft.com/en-us/entra/identity-platform/access-token-claims-reference), checked 2026-10) |
 
 Useful commands: `make check` (everything CI runs), `make test`, `make audit-verify`, `make audit-tamper-demo`
 (edits one audit row as superuser and shows verification fail), `make access-matrix`, `make new-tool name=<x>`.
@@ -72,5 +72,8 @@ Useful commands: `make check` (everything CI runs), `make test`, `make audit-ver
 - **Audit is tamper-evident, not tamper-proof**: a DB superuser can rewrite rows; the hash chain only detects it.
 - **Teams is mocked** (local webhook receiver). **Processor and AP inbox are mocks.**
 - **AP extraction** parses the text layer of synthetic PDFs. No OCR, no accuracy claim vs AI Builder on real invoices.
-- **Where Power Apps stays better**: citizen-developer speed for simple forms/lists, visual designers non-engineers can
-  edit, built-in M365/Dataverse integration and Microsoft-operated hosting/compliance. See `docs/power-apps-comparison.md`.
+- **Where Power Apps stays better**: citizen-developer speed for simple forms/lists
+  ([overview](https://learn.microsoft.com/en-us/power-apps/powerapps-overview)), visual designers non-engineers can
+  edit, built-in M365/Dataverse integration and Microsoft-operated hosting/compliance
+  ([compliance](https://learn.microsoft.com/en-us/power-platform/admin/wp-compliance-data-privacy)); links checked 2026-10.
+  Sources for every claim: `docs/power-apps-comparison.md`.
