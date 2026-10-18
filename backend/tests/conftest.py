@@ -4,7 +4,9 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 
 os.environ.setdefault("ITP_DATABASE_URL", "postgresql+psycopg://itp_app:itp_app@localhost:54320/itp_test")
-os.environ.setdefault("ITP_OWNER_DATABASE_URL", "postgresql+psycopg://itp_owner:itp_owner@localhost:54320/itp_test")
+os.environ.setdefault(
+    "ITP_OWNER_DATABASE_URL", "postgresql+psycopg://itp_owner:itp_owner@localhost:54320/itp_test"
+)
 os.environ.setdefault("ITP_RATE_LIMIT_DEFAULT", "100000/minute")
 
 import pytest
@@ -22,7 +24,9 @@ SUPER = create_engine("postgresql+psycopg://postgres:postgres@localhost:54320/it
 
 class MemoryDirectory:
     def __init__(self) -> None:
-        self.entries = {p["oid"]: DirectoryEntry(p["oid"], True, p.get("roles") or []) for p in PERSONAS.values()}
+        self.entries = {
+            p["oid"]: DirectoryEntry(p["oid"], True, p.get("roles") or []) for p in PERSONAS.values()
+        }
 
     def lookup(self, oid: str) -> DirectoryEntry | None:
         return self.entries.get(oid)
@@ -39,8 +43,14 @@ def app():
 def clean_db() -> Iterator[None]:
     with SUPER.begin() as c:
         c.execute(text("SET session_replication_role = replica"))
-        tables = [r[0] for r in c.execute(text(
-            "SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename <> 'alembic_version'"))]
+        tables = [
+            r[0]
+            for r in c.execute(
+                text(
+                    "SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename <> 'alembic_version'"
+                )
+            )
+        ]
         c.execute(text("TRUNCATE " + ", ".join(f'"{t}"' for t in tables) + " RESTART IDENTITY CASCADE"))
     with session_scope() as db:
         policy.seed_defaults(db)
@@ -59,7 +69,9 @@ def directory() -> Iterator[MemoryDirectory]:
 def login(app, directory) -> Callable[[str], TestClient]:
     def _login(username: str) -> TestClient:
         p = PERSONAS[username]
-        token, csrf = auth.create_session_for_tests(p["oid"], username, p["name"], p.get("roles") or [], p["region"])
+        token, csrf = auth.create_session_for_tests(
+            p["oid"], username, p["name"], p.get("roles") or [], p["region"]
+        )
         c = TestClient(app)
         c.cookies.set(auth.SESSION_COOKIE, token)
         c.cookies.set(auth.CSRF_COOKIE, csrf)
@@ -75,5 +87,11 @@ def principal(username: str):
 
     p = PERSONAS[username]
     roles = frozenset(p.get("roles") or [])
-    return Principal(oid=p["oid"], name=p["name"], username=username, roles=roles,
-                     permissions=get_registry().permissions_for(roles), region=p["region"])
+    return Principal(
+        oid=p["oid"],
+        name=p["name"],
+        username=username,
+        roles=roles,
+        permissions=get_registry().permissions_for(roles),
+        region=p["region"],
+    )

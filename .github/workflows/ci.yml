@@ -1,0 +1,68 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  issues: write
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["54320:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 2s --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm, cache-dependency-path: web/pnpm-lock.yaml }
+      - name: init db roles
+        run: PGPASSWORD=postgres psql -h localhost -p 54320 -U postgres -f infra/postgres/init.sql
+      - run: cd backend && uv sync --frozen
+      - run: cd web && pnpm install --frozen-lockfile
+      - run: make lint
+      - run: make typecheck
+      - run: make test
+      - run: make openapi-check
+      - name: secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
+        continue-on-error: true
+      - name: dependency audit
+        run: cd backend && uv run pip-audit --progress-spinner off
+        continue-on-error: true
+  protected-paths:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 50 }
+      - name: list protected-path changes in this push
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          pattern=$(paste -sd'|' PROTECTED_PATHS)
+          range="${BEFORE}..${GITHUB_SHA}"
+          git cat-file -e "${BEFORE}^{commit}" 2>/dev/null || range="${GITHUB_SHA}~1..${GITHUB_SHA}"
+          lines=""
+          for c in $(git rev-list --reverse "$range"); do
+            files=$(git diff-tree --no-commit-id --name-only -r "$c" | grep -E "$pattern" || true)
+            [ -z "$files" ] && continue
+            lines+="- [ ] ${c:0:7} $(git log -1 --format=%s "$c") — $(echo $files | tr '\n' ' ')"$'\n'
+          done
+          [ -z "$lines" ] && { echo "no protected-path changes"; exit 0; }
+          num=$(gh issue list --state open --search "Protected-path changes awaiting review in:title" --json number -q '.[0].number')
+          if [ -z "$num" ]; then
+            gh issue create --title "Protected-path changes awaiting review" --body "Tick each commit after reviewing it (Option B: direct-to-main).
+          ${lines}"
+          else
+            gh issue comment "$num" --body "$lines"
+          fi

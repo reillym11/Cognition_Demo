@@ -1,0 +1,5 @@
+# Ready for when PRs are turned on. Under Option B these paths are tracked by the protected-path CI job instead.
+/backend/app/foundation/ @reillym11
+/backend/migrations/ @reillym11
+/infra/ @reillym11
+/.github/ @reillym11

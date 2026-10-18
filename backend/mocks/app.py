@@ -66,6 +66,7 @@ def admin_reset() -> dict[str, str]:
 
 # ---------- Entra directory (Graph-shaped subset) ----------
 
+
 @app.get("/directory/users/{oid}")
 def dir_user(oid: str) -> dict[str, Any]:
     u = STATE["directory"].get(oid)
@@ -91,6 +92,7 @@ def dir_update(oid: str, body: RolesIn) -> dict[str, Any]:
 
 # ---------- KYC vendor ----------
 
+
 @app.get("/kyc-vendor/v1/checks/{applicant_ref}")
 def kyc_check(applicant_ref: str) -> dict[str, Any]:
     mode = _fault("kyc.check")
@@ -103,13 +105,19 @@ def kyc_check(applicant_ref: str) -> dict[str, Any]:
     return {
         "applicant_ref": applicant_ref,
         "risk_score": score,
-        "watchlist_hits": [] if rnd.random() > 0.08 else [{"list": "OFAC-SDN (synthetic)", "match": round(rnd.uniform(0.7, 0.99), 2)}],
-        "documents": [{"type": t, "status": "verified" if rnd.random() > 0.15 else "unverified"} for t in ("passport", "proof_of_address")],
+        "watchlist_hits": []
+        if rnd.random() > 0.08
+        else [{"list": "OFAC-SDN (synthetic)", "match": round(rnd.uniform(0.7, 0.99), 2)}],
+        "documents": [
+            {"type": t, "status": "verified" if rnd.random() > 0.15 else "unverified"}
+            for t in ("passport", "proof_of_address")
+        ],
         "checked_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
 
 
 # ---------- Payment processor ----------
+
 
 class RefundIn(BaseModel):
     charge_id: str
@@ -133,8 +141,14 @@ def processor_refund(body: RefundIn, request: Request) -> dict[str, Any]:
     if mode == "timeout":
         time.sleep(6)
         raise HTTPException(504)
-    rec = {"id": f"re_{len(STATE['refunds']) + 1:06d}", "charge_id": body.charge_id, "amount_cents": body.amount_cents,
-           "currency": body.currency, "status": "succeeded", "idempotency_key": key}
+    rec = {
+        "id": f"re_{len(STATE['refunds']) + 1:06d}",
+        "charge_id": body.charge_id,
+        "amount_cents": body.amount_cents,
+        "currency": body.currency,
+        "status": "succeeded",
+        "idempotency_key": key,
+    }
     STATE["refunds"][key] = rec
     if mode == "timeout_after_success":
         time.sleep(6)  # refund recorded, but the caller times out and never sees the response
@@ -157,6 +171,7 @@ def processor_count(charge_id: str | None = None) -> dict[str, int]:
 
 # ---------- Teams incoming webhook sink ----------
 
+
 @app.post("/teams/webhook/{channel}")
 async def teams_webhook(channel: str, request: Request) -> dict[str, str]:
     mode = _fault("teams.webhook")
@@ -172,6 +187,7 @@ def teams_messages(channel: str | None = None) -> list[dict[str, Any]]:
 
 
 # ---------- AP inbox ----------
+
 
 @app.post("/ap-inbox/messages")
 async def ap_inbox_put(request: Request) -> dict[str, int]:

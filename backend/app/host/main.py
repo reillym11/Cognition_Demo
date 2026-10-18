@@ -46,9 +46,16 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             response.headers.setdefault(k, v)
         response.headers["X-Request-ID"] = rid[:64]
         principal = getattr(request.state, "principal", None)
-        log.info("http.request", extra={
-            "method": request.method, "path": request.url.path, "status": response.status_code,
-            "ms": round((time.perf_counter() - start) * 1000, 1), "actor": principal.oid if principal else None})
+        log.info(
+            "http.request",
+            extra={
+                "method": request.method,
+                "path": request.url.path,
+                "status": response.status_code,
+                "ms": round((time.perf_counter() - start) * 1000, 1),
+                "actor": principal.oid if principal else None,
+            },
+        )
         return response
 
 
@@ -63,8 +70,13 @@ limiter = Limiter(key_func=_key, default_limits=[get_settings().rate_limit_defau
 def create_app() -> FastAPI:
     configure()
     reg = get_registry()
-    app = FastAPI(title="Internal Tools Platform", version="0.1.0", docs_url="/api/docs", openapi_url="/api/openapi.json",
-                  redoc_url=None)
+    app = FastAPI(
+        title="Internal Tools Platform",
+        version="0.1.0",
+        docs_url="/api/docs",
+        openapi_url="/api/openapi.json",
+        redoc_url=None,
+    )
     app.state.limiter = limiter
     app.add_middleware(SlowAPIMiddleware)
     app.add_middleware(RequestContextMiddleware)
@@ -80,7 +92,9 @@ def create_app() -> FastAPI:
     @app.exception_handler(RequestValidationError)
     def _validation(request: Request, exc: RequestValidationError) -> JSONResponse:
         errs = [{"loc": e.get("loc"), "msg": e.get("msg"), "type": e.get("type")} for e in exc.errors()]
-        return JSONResponse({"detail": "validation error", "code": "invalid", "errors": errs}, status_code=422)
+        return JSONResponse(
+            {"detail": "validation error", "code": "invalid", "errors": errs}, status_code=422
+        )
 
     app.include_router(auth.router)
     for m in reg.manifests:

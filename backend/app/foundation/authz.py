@@ -31,8 +31,13 @@ class Principal:
 
 
 def system_principal(job: str) -> Principal:
-    return Principal(oid=f"system:{job}", name=f"system:{job}", username=f"system:{job}",
-                     roles=frozenset({"System"}), permissions=frozenset())
+    return Principal(
+        oid=f"system:{job}",
+        name=f"system:{job}",
+        username=f"system:{job}",
+        roles=frozenset({"System"}),
+        permissions=frozenset(),
+    )
 
 
 def _current_principal(request: Request) -> Principal:
@@ -47,7 +52,9 @@ def require(*perms: str) -> Callable[..., Principal]:
     def dep(request: Request, principal: Principal = Depends(_current_principal)) -> Principal:
         missing = [p for p in perms if not principal.has(p)]
         if missing:
-            log.info("authz.denied", extra={"actor": principal.oid, "missing": missing, "path": request.url.path})
+            log.info(
+                "authz.denied", extra={"actor": principal.oid, "missing": missing, "path": request.url.path}
+            )
             raise HTTPException(status_code=403, detail=f"missing permission: {', '.join(missing)}")
         return principal
 
@@ -112,5 +119,7 @@ def route_permissions(app: FastAPI) -> list[dict[str, Any]]:
     for r in app.routes:
         if isinstance(r, APIRoute):
             found, perms = _declared(r.dependant)
-            out.append({"methods": sorted(r.methods), "path": r.path, "permissions": list(perms), "declared": found})
+            out.append(
+                {"methods": sorted(r.methods), "path": r.path, "permissions": list(perms), "declared": found}
+            )
     return out

@@ -65,9 +65,20 @@ def login(return_to: str | None = None) -> RedirectResponse:
     meta = _oidc_metadata()["meta"]
     state, nonce, verifier, binding = (secrets.token_urlsafe(32) for _ in range(4))
     with session_scope() as db:
-        db.execute(delete(OidcLoginState).where(OidcLoginState.created_at < datetime.now(UTC) - timedelta(minutes=10)))
-        db.add(OidcLoginState(state=state, nonce=nonce, code_verifier=verifier, browser_binding=_hash(binding),
-                              return_to=_safe_return_to(return_to)))
+        db.execute(
+            delete(OidcLoginState).where(
+                OidcLoginState.created_at < datetime.now(UTC) - timedelta(minutes=10)
+            )
+        )
+        db.add(
+            OidcLoginState(
+                state=state,
+                nonce=nonce,
+                code_verifier=verifier,
+                browser_binding=_hash(binding),
+                return_to=_safe_return_to(return_to),
+            )
+        )
     params = {
         "client_id": s.oidc_client_id,
         "response_type": "code",
@@ -79,8 +90,15 @@ def login(return_to: str | None = None) -> RedirectResponse:
         "code_challenge_method": "S256",
     }
     resp = RedirectResponse(f"{meta['authorization_endpoint']}?{urlencode(params)}", status_code=303)
-    resp.set_cookie(LOGIN_BINDING_COOKIE, binding, httponly=True, samesite="lax", secure=s.cookie_secure,
-                    max_age=600, path="/api/auth")
+    resp.set_cookie(
+        LOGIN_BINDING_COOKIE,
+        binding,
+        httponly=True,
+        samesite="lax",
+        secure=s.cookie_secure,
+        max_age=600,
+        path="/api/auth",
+    )
     return resp
 
 
@@ -95,7 +113,9 @@ def roles_from_claims(claims: dict[str, Any]) -> list[str]:
 
 
 @router.get("/callback", dependencies=[Depends(public("OIDC redirect target"))])
-def callback(request: Request, code: str | None = None, state: str | None = None, error: str | None = None) -> Response:
+def callback(
+    request: Request, code: str | None = None, state: str | None = None, error: str | None = None
+) -> Response:
     s = get_settings()
     if error or not code or not state:
         return _login_error("idp_error")
@@ -109,18 +129,30 @@ def callback(request: Request, code: str | None = None, state: str | None = None
         db.delete(st)
         nonce, verifier, return_to = st.nonce, st.code_verifier, st.return_to
     cache = _oidc_metadata()
-    tok = httpx.post(cache["meta"]["token_endpoint"], timeout=10, data={
-        "grant_type": "authorization_code", "code": code, "redirect_uri": f"{s.public_base_url}/api/auth/callback",
-        "client_id": s.oidc_client_id, "client_secret": s.oidc_client_secret, "code_verifier": verifier,
-    })
+    tok = httpx.post(
+        cache["meta"]["token_endpoint"],
+        timeout=10,
+        data={
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": f"{s.public_base_url}/api/auth/callback",
+            "client_id": s.oidc_client_id,
+            "client_secret": s.oidc_client_secret,
+            "code_verifier": verifier,
+        },
+    )
     if tok.status_code != 200 or "id_token" not in tok.json():
         return _login_error("token_exchange_failed")
     try:
-        claims = jwt.decode(tok.json()["id_token"], cache["jwks"], claims_options={
-            "iss": {"essential": True, "value": s.oidc_issuer},
-            "aud": {"essential": True, "value": s.oidc_client_id},
-            "nonce": {"essential": True, "value": nonce},
-        })
+        claims = jwt.decode(
+            tok.json()["id_token"],
+            cache["jwks"],
+            claims_options={
+                "iss": {"essential": True, "value": s.oidc_issuer},
+                "aud": {"essential": True, "value": s.oidc_client_id},
+                "nonce": {"essential": True, "value": nonce},
+            },
+        )
         claims.validate(leeway=30)
     except Exception:
         return _login_error("invalid_token")
@@ -128,20 +160,39 @@ def callback(request: Request, code: str | None = None, state: str | None = None
         roles = roles_from_claims(dict(claims))
     except PermissionError as e:
         return _login_error(str(e))
-    return _start_session(claims["oid"], claims.get("preferred_username", claims["oid"]), claims.get("name", ""),
-                          roles, claims.get("region"), return_to)
+    return _start_session(
+        claims["oid"],
+        claims.get("preferred_username", claims["oid"]),
+        claims.get("name", ""),
+        roles,
+        claims.get("region"),
+        return_to,
+    )
 
 
-def _start_session(oid: str, username: str, name: str, roles: list[str], region: str | None, return_to: str) -> Response:
+def _start_session(
+    oid: str, username: str, name: str, roles: list[str], region: str | None, return_to: str
+) -> Response:
     s = get_settings()
     token = secrets.token_urlsafe(32)
     csrf = secrets.token_urlsafe(24)
     with session_scope() as db:
-        sess = UserSession(id_hash=_hash(token), oid=oid, username=username, name=name, roles=roles, region=region,
-                           csrf_token=csrf)
+        sess = UserSession(
+            id_hash=_hash(token),
+            oid=oid,
+            username=username,
+            name=name,
+            roles=roles,
+            region=region,
+            csrf_token=csrf,
+        )
         db.add(sess)
-        actor = Principal(oid=oid, name=name, username=username, roles=frozenset(roles), permissions=frozenset())
-        audit.record(db, actor, "auth.login", "session", sess.id_hash[:12], chain="core", after={"roles": roles})
+        actor = Principal(
+            oid=oid, name=name, username=username, roles=frozenset(roles), permissions=frozenset()
+        )
+        audit.record(
+            db, actor, "auth.login", "session", sess.id_hash[:12], chain="core", after={"roles": roles}
+        )
     resp = RedirectResponse(f"{s.public_base_url}{return_to}", status_code=303)
     set_session_cookies(resp, token, csrf)
     resp.delete_cookie(LOGIN_BINDING_COOKIE, path="/api/auth")
@@ -154,13 +205,24 @@ def set_session_cookies(resp: Response, token: str, csrf: str) -> None:
     resp.set_cookie(CSRF_COOKIE, csrf, httponly=False, samesite="strict", secure=s.cookie_secure, path="/")
 
 
-def create_session_for_tests(oid: str, username: str, name: str, roles: list[str], region: str | None = "US") -> tuple[str, str]:
+def create_session_for_tests(
+    oid: str, username: str, name: str, roles: list[str], region: str | None = "US"
+) -> tuple[str, str]:
     """Used by tests and the seed CLI only: create a session without the browser OIDC dance."""
     token = secrets.token_urlsafe(32)
     csrf = secrets.token_urlsafe(24)
     with session_scope() as db:
-        db.add(UserSession(id_hash=_hash(token), oid=oid, username=username, name=name, roles=roles, region=region,
-                           csrf_token=csrf))
+        db.add(
+            UserSession(
+                id_hash=_hash(token),
+                oid=oid,
+                username=username,
+                name=name,
+                roles=roles,
+                region=region,
+                csrf_token=csrf,
+            )
+        )
     return token, csrf
 
 
@@ -200,8 +262,15 @@ def principal_from_request(request: Request) -> Principal:
                     raise HTTPException(status_code=403, detail="CSRF token missing or invalid")
             sess.last_seen_at = now
         roles = frozenset(sess.roles)
-        p = Principal(oid=sess.oid, name=sess.name, username=sess.username, roles=roles,
-                      permissions=get_registry().permissions_for(roles), region=sess.region, session_id=sess.id_hash)
+        p = Principal(
+            oid=sess.oid,
+            name=sess.name,
+            username=sess.username,
+            roles=roles,
+            permissions=get_registry().permissions_for(roles),
+            region=sess.region,
+            session_id=sess.id_hash,
+        )
     if raise_after:
         raise HTTPException(status_code=401, detail=raise_after)
     request.state.principal = p
@@ -223,7 +292,9 @@ def logout(request: Request, principal: Principal = Depends(authenticated())) ->
 
 def revoke_user_sessions(oid: str, reason: str) -> int:
     with session_scope() as db:
-        rows = db.execute(select(UserSession).where(UserSession.oid == oid, UserSession.revoked_at.is_(None))).scalars()
+        rows = db.execute(
+            select(UserSession).where(UserSession.oid == oid, UserSession.revoked_at.is_(None))
+        ).scalars()
         n = 0
         for r in rows:
             r.revoked_at, r.revoked_reason = datetime.now(UTC), reason

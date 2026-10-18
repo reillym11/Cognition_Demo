@@ -20,25 +20,48 @@ from app.foundation.registry import get_registry
 log = logging.getLogger("itp.jobs")
 
 
-def enqueue(db: Session, kind: str, payload: dict[str, Any] | None = None, *, run_at: datetime | None = None,
-            dedupe_key: str | None = None, max_attempts: int = 5) -> None:
+def enqueue(
+    db: Session,
+    kind: str,
+    payload: dict[str, Any] | None = None,
+    *,
+    run_at: datetime | None = None,
+    dedupe_key: str | None = None,
+    max_attempts: int = 5,
+) -> None:
     if kind not in get_registry().jobs:
         raise ValueError(f"unknown job kind {kind!r}")
-    stmt = insert(Job).values(kind=kind, payload=payload or {}, run_at=run_at or datetime.now(UTC),
-                              dedupe_key=dedupe_key, max_attempts=max_attempts, status="queued", attempts=0,
-                              created_at=datetime.now(UTC))
+    stmt = insert(Job).values(
+        kind=kind,
+        payload=payload or {},
+        run_at=run_at or datetime.now(UTC),
+        dedupe_key=dedupe_key,
+        max_attempts=max_attempts,
+        status="queued",
+        attempts=0,
+        created_at=datetime.now(UTC),
+    )
     if dedupe_key:
-        stmt = stmt.on_conflict_do_nothing(index_elements=["dedupe_key"],
-                                           index_where=text("dedupe_key IS NOT NULL AND status IN ('queued','running')"))
+        stmt = stmt.on_conflict_do_nothing(
+            index_elements=["dedupe_key"],
+            index_where=text("dedupe_key IS NOT NULL AND status IN ('queued','running')"),
+        )
     db.execute(stmt)
 
 
 def _claim(worker_id: str) -> Job | None:
     with session_scope() as db:
-        sub = (select(Job.id).where(Job.status == "queued", Job.run_at <= func.now())
-               .order_by(Job.run_at, Job.id).limit(1).with_for_update(skip_locked=True).scalar_subquery())
+        sub = (
+            select(Job.id)
+            .where(Job.status == "queued", Job.run_at <= func.now())
+            .order_by(Job.run_at, Job.id)
+            .limit(1)
+            .with_for_update(skip_locked=True)
+            .scalar_subquery()
+        )
         row = db.execute(
-            update(Job).where(Job.id == sub)
+            update(Job)
+            .where(Job.id == sub)
             .values(status="running", locked_by=worker_id, locked_at=func.now(), attempts=Job.attempts + 1)
             .returning(Job)
         ).scalar_one_or_none()
@@ -48,7 +71,7 @@ def _claim(worker_id: str) -> Job | None:
 
 
 def _backoff(attempts: int) -> timedelta:
-    return timedelta(seconds=min(2 ** attempts, 300))
+    return timedelta(seconds=min(2**attempts, 300))
 
 
 def run_one(worker_id: str = "inline") -> bool:
@@ -61,15 +84,29 @@ def run_one(worker_id: str = "inline") -> bool:
             raise RuntimeError(f"no handler for {job.kind}")
         with session_scope() as db:
             handler(db, job.payload)
-            db.execute(update(Job).where(Job.id == job.id).values(status="succeeded", finished_at=func.now(), last_error=None))
+            db.execute(
+                update(Job)
+                .where(Job.id == job.id)
+                .values(status="succeeded", finished_at=func.now(), last_error=None)
+            )
     except Exception as e:
         err = redact_text(f"{type(e).__name__}: {e}\n{traceback.format_exc(limit=3)}")[:2000]
         dead = job.attempts >= job.max_attempts
         with session_scope() as db:
-            db.execute(update(Job).where(Job.id == job.id).values(
-                status="dead" if dead else "queued", last_error=err, locked_by=None,
-                run_at=datetime.now(UTC) + _backoff(job.attempts), finished_at=func.now() if dead else None))
-        log.warning("job.failed", extra={"job_id": job.id, "kind": job.kind, "attempt": job.attempts, "dead": dead})
+            db.execute(
+                update(Job)
+                .where(Job.id == job.id)
+                .values(
+                    status="dead" if dead else "queued",
+                    last_error=err,
+                    locked_by=None,
+                    run_at=datetime.now(UTC) + _backoff(job.attempts),
+                    finished_at=func.now() if dead else None,
+                )
+            )
+        log.warning(
+            "job.failed", extra={"job_id": job.id, "kind": job.kind, "attempt": job.attempts, "dead": dead}
+        )
     return True
 
 
@@ -88,8 +125,11 @@ def run_until_idle(max_jobs: int = 10_000, include_future: bool = False) -> int:
 
 def reclaim_stuck(older_than: timedelta = timedelta(minutes=5)) -> int:
     with session_scope() as db:
-        res = db.execute(update(Job).where(Job.status == "running", Job.locked_at < datetime.now(UTC) - older_than)
-                         .values(status="queued", locked_by=None))
+        res = db.execute(
+            update(Job)
+            .where(Job.status == "running", Job.locked_at < datetime.now(UTC) - older_than)
+            .values(status="queued", locked_by=None)
+        )
         return res.rowcount or 0  # type: ignore[attr-defined]
 
 
@@ -117,16 +157,26 @@ def worker_loop(poll_seconds: float, scheduler: bool = True) -> None:
 
 
 def summary(db: Session) -> dict[str, Any]:
-    counts = dict(db.execute(select(Job.status, func.count()).group_by(Job.status)).all())  # type: ignore[arg-type]
+    counts = dict(db.execute(select(Job.status, func.count()).group_by(Job.status)).all())
     by_kind = [
         {"kind": k, "status": s, "count": c}
-        for k, s, c in db.execute(select(Job.kind, Job.status, func.count()).group_by(Job.kind, Job.status)
-                                  .order_by(Job.kind)).all()
+        for k, s, c in db.execute(
+            select(Job.kind, Job.status, func.count()).group_by(Job.kind, Job.status).order_by(Job.kind)
+        ).all()
     ]
     return {"counts": counts, "by_kind": by_kind}
 
 
 def to_dict(j: Job) -> dict[str, Any]:
-    return {"id": j.id, "kind": j.kind, "status": j.status, "attempts": j.attempts, "max_attempts": j.max_attempts,
-            "run_at": j.run_at.isoformat(), "last_error": j.last_error, "created_at": j.created_at.isoformat(),
-            "finished_at": j.finished_at.isoformat() if j.finished_at else None, "payload": j.payload}
+    return {
+        "id": j.id,
+        "kind": j.kind,
+        "status": j.status,
+        "attempts": j.attempts,
+        "max_attempts": j.max_attempts,
+        "run_at": j.run_at.isoformat(),
+        "last_error": j.last_error,
+        "created_at": j.created_at.isoformat(),
+        "finished_at": j.finished_at.isoformat() if j.finished_at else None,
+        "payload": j.payload,
+    }

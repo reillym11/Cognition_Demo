@@ -40,11 +40,22 @@ def csv_export(
             raise Invalid(f"export exceeds {MAX_ROWS} rows; narrow the filters")
         masked = mask_record(resource, r)
         w.writerow({k: _cell(masked.get(k)) for k in columns})
-    audit.record(db, actor, "export.csv", resource, filename, chain=chain, reason=reason,
-                 after={"rows": n, "filters": filters, "columns": columns})
+    audit.record(
+        db,
+        actor,
+        "export.csv",
+        resource,
+        filename,
+        chain=chain,
+        reason=reason,
+        after={"rows": n, "filters": filters, "columns": columns},
+    )
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    return Response(buf.getvalue(), media_type="text/csv",
-                    headers={"Content-Disposition": f'attachment; filename="{filename}-{stamp}.csv"'})
+    return Response(
+        buf.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}-{stamp}.csv"'},
+    )
 
 
 def _cell(v: Any) -> Any:

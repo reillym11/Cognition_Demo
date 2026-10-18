@@ -54,7 +54,14 @@ def cmd_audit_verify(_: argparse.Namespace) -> None:
         for c in audit.chains(db):
             r = audit.verify_chain(db, c)
             status = "OK " if r.ok else "BAD"
-            print(f"{status} chain={r.chain:12s} events={r.count:7d} " + (f"first_bad_seq={r.first_bad_seq} ({r.problem})" if not r.ok else f"head={r.head[:16] if r.head else ''}"))
+            print(
+                f"{status} chain={r.chain:12s} events={r.count:7d} "
+                + (
+                    f"first_bad_seq={r.first_bad_seq} ({r.problem})"
+                    if not r.ok
+                    else f"head={r.head[:16] if r.head else ''}"
+                )
+            )
             bad += 0 if r.ok else 1
     sys.exit(1 if bad else 0)
 
@@ -66,7 +73,9 @@ def cmd_audit_tamper_demo(_: argparse.Namespace) -> None:
 
     eng = create_engine(SUPERUSER_URL.format(db=_db_name()))
     with eng.begin() as c:
-        row = c.execute(text("SELECT seq, chain, reason FROM audit_events WHERE reason IS NOT NULL ORDER BY seq LIMIT 1")).first()
+        row = c.execute(
+            text("SELECT seq, chain, reason FROM audit_events WHERE reason IS NOT NULL ORDER BY seq LIMIT 1")
+        ).first()
         if row is None:
             print("no audit events with a reason yet; run `make seed` or use the app first")
             sys.exit(2)
@@ -81,7 +90,10 @@ def cmd_audit_tamper_demo(_: argparse.Namespace) -> None:
     print("2) superuser disables the trigger and rewrites the reason ...")
     with eng.begin() as c:
         c.execute(text("SET session_replication_role = replica"))
-        c.execute(text("UPDATE audit_events SET reason = :r WHERE seq = :s"), {"r": reason + " (tampered)", "s": seq})
+        c.execute(
+            text("UPDATE audit_events SET reason = :r WHERE seq = :s"),
+            {"r": reason + " (tampered)", "s": seq},
+        )
     with session_scope() as db:
         r = audit.verify_chain(db, chain)
     print(f"3) verify chain={chain}: ok={r.ok} first_bad_seq={r.first_bad_seq} problem={r.problem}")
@@ -124,8 +136,12 @@ def cmd_new_tool(args: argparse.Namespace) -> None:
     webdest = ROOT / "web/src/tools" / name
     webdest.mkdir(parents=True)
     for f in (ROOT / "web/src/tool_template").glob("*.tpl"):
-        (webdest / f.name.removesuffix(".tpl")).write_text(f.read_text().replace("__tool__", name).replace("__Title__", title))
-    print(f"created backend/app/tools/{name} and web/src/tools/{name}; next: models, migration, routes (see playbook)")
+        (webdest / f.name.removesuffix(".tpl")).write_text(
+            f.read_text().replace("__tool__", name).replace("__Title__", title)
+        )
+    print(
+        f"created backend/app/tools/{name} and web/src/tools/{name}; next: models, migration, routes (see playbook)"
+    )
 
 
 def main() -> None:

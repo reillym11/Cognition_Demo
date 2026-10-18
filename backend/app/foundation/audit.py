@@ -52,7 +52,9 @@ def compute_hash(prev_hash: str, e: AuditEvent) -> str:
     return hashlib.sha256((prev_hash + _canon(_hash_fields(e))).encode()).hexdigest()
 
 
-def diff(before: dict[str, Any] | None, after: dict[str, Any] | None) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+def diff(
+    before: dict[str, Any] | None, after: dict[str, Any] | None
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
     """Keep only changed keys."""
     if before is None or after is None:
         return before, after
@@ -98,7 +100,8 @@ def record(
         after=a,
         request_id=current_request_id(),
         retention_class=retention_class,
-        retain_until=now + timedelta(days=365 * RETENTION_YEARS[retention_class] + RETENTION_YEARS[retention_class] // 4),
+        retain_until=now
+        + timedelta(days=365 * RETENTION_YEARS[retention_class] + RETENTION_YEARS[retention_class] // 4),
         prev_hash=prev or GENESIS,
         hash="",
     )
@@ -125,7 +128,9 @@ def verify_chain(db: Session, chain: str) -> VerifyResult:
     for e in rows:
         n += 1
         if e.prev_hash != prev:
-            return VerifyResult(chain, n, False, e.seq, "prev_hash does not match previous event (row removed or reordered)")
+            return VerifyResult(
+                chain, n, False, e.seq, "prev_hash does not match previous event (row removed or reordered)"
+            )
         if compute_hash(prev, e) != e.hash:
             return VerifyResult(chain, n, False, e.seq, "content hash mismatch (row modified)")
         prev = e.hash

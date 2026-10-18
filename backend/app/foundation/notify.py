@@ -18,18 +18,43 @@ def teams(db: Session, channel: str, title: str, facts: dict[str, str], link: st
 def deliver(db: Session, payload: dict[str, Any]) -> None:
     card = {
         "type": "message",
-        "attachments": [{
-            "contentType": "application/vnd.microsoft.card.adaptive",
-            "content": {
-                "type": "AdaptiveCard", "version": "1.4",
-                "body": [
-                    {"type": "TextBlock", "text": redact_text(payload["title"]), "weight": "bolder", "wrap": True},
-                    {"type": "FactSet", "facts": [{"title": k, "value": redact_text(str(v))} for k, v in payload["facts"].items()]},
-                ],
-                "actions": ([{"type": "Action.OpenUrl", "title": "Open", "url": get_settings().public_base_url + payload["link"]}]
-                            if payload.get("link") else []),
-            },
-        }],
+        "attachments": [
+            {
+                "contentType": "application/vnd.microsoft.card.adaptive",
+                "content": {
+                    "type": "AdaptiveCard",
+                    "version": "1.4",
+                    "body": [
+                        {
+                            "type": "TextBlock",
+                            "text": redact_text(payload["title"]),
+                            "weight": "bolder",
+                            "wrap": True,
+                        },
+                        {
+                            "type": "FactSet",
+                            "facts": [
+                                {"title": k, "value": redact_text(str(v))}
+                                for k, v in payload["facts"].items()
+                            ],
+                        },
+                    ],
+                    "actions": (
+                        [
+                            {
+                                "type": "Action.OpenUrl",
+                                "title": "Open",
+                                "url": get_settings().public_base_url + payload["link"],
+                            }
+                        ]
+                        if payload.get("link")
+                        else []
+                    ),
+                },
+            }
+        ],
     }
-    r = httpx.post(f"{get_settings().mocks_base_url}/teams/webhook/{payload['channel']}", json=card, timeout=5)
+    r = httpx.post(
+        f"{get_settings().mocks_base_url}/teams/webhook/{payload['channel']}", json=card, timeout=5
+    )
     r.raise_for_status()

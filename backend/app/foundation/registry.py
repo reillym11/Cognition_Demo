@@ -116,7 +116,6 @@ class Registry:
 
 def discover() -> list[ToolManifest]:
     import app.tools
-
     from app.foundation.core_manifest import MANIFEST as CORE
 
     found = [CORE]

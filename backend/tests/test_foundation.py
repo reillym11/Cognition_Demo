@@ -104,10 +104,12 @@ def test_audit_chain_verifies_and_detects_tampering():
     p = principal("aud.auditor")
     with session_scope() as db:
         for i in range(5):
-            audit.record(db, p, "test.event", "policy", i, chain="t", reason=f"r{i}", before={"a": 1}, after={"a": i})
+            audit.record(
+                db, p, "test.event", "policy", i, chain="t", reason=f"r{i}", before={"a": 1}, after={"a": i}
+            )
     with session_scope() as db:
         assert audit.verify_chain(db, "t").ok
-    with session_scope() as db, pytest.raises(Exception, match="append-only|permission denied"):
+    with session_scope() as db, pytest.raises(Exception, match=r"append-only|permission denied"):
         db.execute(text("UPDATE audit_events SET reason='x' WHERE seq=2"))
     with SUPER.begin() as c:
         c.execute(text("SET session_replication_role = replica"))
@@ -185,7 +187,9 @@ def test_closed_request_rejects_decisions():
         pytest.skip("no policies")
     key = items[0]["key"]
     with session_scope() as db:
-        rid = policy.request_change(db, cora, key, policy.validate(key, 1 if items[0]["kind"] != "float" else 0.1), "x y z").id
+        rid = policy.request_change(
+            db, cora, key, policy.validate(key, 1 if items[0]["kind"] != "float" else 0.1), "x y z"
+        ).id
     with session_scope() as db:
         approvals.decide(db, pia, rid, "reject", "no")
     with session_scope() as db, pytest.raises(Conflict):
