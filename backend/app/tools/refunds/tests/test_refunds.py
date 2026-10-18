@@ -1,3 +1,4 @@
+import contextlib
 import threading
 
 import pytest
@@ -215,10 +216,8 @@ def test_concurrent_requests_never_exceed_captured():
 def test_property_reserved_never_exceeds_captured(amounts, captured):
     txn = make_txn(captured)
     for a in amounts:
-        try:
+        with contextlib.suppress(Conflict):
             request(txn, a)
-        except Conflict:
-            pass
     with session_scope() as db:
         total = db.execute(
             select(func.coalesce(func.sum(Refund.amount_cents), 0)).where(
