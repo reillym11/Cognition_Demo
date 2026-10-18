@@ -62,7 +62,7 @@ Useful commands: `make check` (everything CI runs), `make test`, `make audit-ver
   `!new-internal-tool` playbook (`docs/playbooks/new-internal-tool.md`) make tool N+1 repeatable.
 - Non-engineer change requests: the **Internal tool change request** issue form (label `change-request`) is the
   stand-in for Teams; a Devin Automation picks those issues up. Teams was not installable in this tenant.
-- Measurements: `docs/evidence/`.
+- Measurements: `docs/evidence/` — engineering measurement report: [`docs/evidence/measurement.md`](docs/evidence/measurement.md).
 
 ## Honest limits
 
