@@ -73,11 +73,9 @@ def cmd_audit_tamper_demo(_: argparse.Namespace) -> None:
 
     eng = create_engine(SUPERUSER_URL.format(db=_db_name()))
     with eng.begin() as c:
-        row = c.execute(
-            text("SELECT seq, chain, reason FROM audit_events WHERE reason IS NOT NULL ORDER BY seq LIMIT 1")
-        ).first()
+        row = c.execute(text("SELECT seq, chain, reason FROM audit_events ORDER BY seq LIMIT 1")).first()
         if row is None:
-            print("no audit events with a reason yet; run `make seed` or use the app first")
+            print("no audit events yet; run `make demo-reset` or use the app first")
             sys.exit(2)
         seq, chain, reason = row
         print(f"1) app role attempts UPDATE on audit seq={seq} ...")
@@ -92,7 +90,7 @@ def cmd_audit_tamper_demo(_: argparse.Namespace) -> None:
         c.execute(text("SET session_replication_role = replica"))
         c.execute(
             text("UPDATE audit_events SET reason = :r WHERE seq = :s"),
-            {"r": reason + " (tampered)", "s": seq},
+            {"r": (reason or "") + " (tampered)", "s": seq},
         )
     with session_scope() as db:
         r = audit.verify_chain(db, chain)

@@ -1,7 +1,7 @@
 """Deny-by-default authorization: every route declares a permission or is explicitly public."""
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -99,27 +99,42 @@ def _declared(dependant: Any) -> tuple[bool, tuple[str, ...]]:
     return found, perms
 
 
+def _api_routes(routes: Any) -> Iterator[APIRoute]:
+    """Every APIRoute, including those behind FastAPI's lazily-included routers (>=0.13x)."""
+    for r in routes:
+        if isinstance(r, APIRoute):
+            yield r
+        sub = getattr(r, "original_router", None)
+        if sub is not None:
+            yield from _api_routes(sub.routes)
+
+
 def check_routes(app: FastAPI, known_permissions: set[str]) -> list[str]:
     """Return problems: routes with no permission declaration, or referencing unknown permissions."""
     problems = []
-    for r in app.routes:
-        if not isinstance(r, APIRoute):
-            continue
+    routes = list(_api_routes(app.routes))
+    if not routes:
+        problems.append("no API routes discovered; route check would pass vacuously")
+    for r in routes:
         found, perms = _declared(r.dependant)
         if not found:
-            problems.append(f"{sorted(r.methods)} {r.path}: no permission dependency (deny-by-default)")
+            problems.append(f"{sorted(r.methods or ())} {r.path}: no permission dependency (deny-by-default)")
         for p in perms:
             if p not in known_permissions:
-                problems.append(f"{sorted(r.methods)} {r.path}: unknown permission {p!r}")
+                problems.append(f"{sorted(r.methods or ())} {r.path}: unknown permission {p!r}")
     return problems
 
 
 def route_permissions(app: FastAPI) -> list[dict[str, Any]]:
     out = []
-    for r in app.routes:
-        if isinstance(r, APIRoute):
-            found, perms = _declared(r.dependant)
-            out.append(
-                {"methods": sorted(r.methods), "path": r.path, "permissions": list(perms), "declared": found}
-            )
+    for r in _api_routes(app.routes):
+        found, perms = _declared(r.dependant)
+        out.append(
+            {
+                "methods": sorted(r.methods or ()),
+                "path": r.path,
+                "permissions": list(perms),
+                "declared": found,
+            }
+        )
     return out

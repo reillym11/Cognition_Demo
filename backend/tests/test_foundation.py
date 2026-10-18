@@ -16,6 +16,9 @@ def test_host_has_no_unprotected_routes(app):
     from app.foundation.registry import get_registry
 
     assert check_routes(app, set(get_registry().permissions)) == []
+    from app.foundation.authz import route_permissions
+
+    assert len(route_permissions(app)) > 50, "route discovery must see included tool routers"
 
 
 def test_unprotected_route_is_detected():
@@ -34,6 +37,10 @@ def test_unprotected_route_is_detected():
     problems = check_routes(a, {"core.audit.read"})
     assert any("/oops" in x and "no permission" in x for x in problems)
     assert any("/typo" in x and "unknown permission" in x for x in problems)
+
+
+def test_route_check_fails_closed_when_no_routes_found():
+    assert check_routes(FastAPI(), set()) != []
 
 
 def test_health_public_me_requires_login(app):

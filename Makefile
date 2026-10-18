@@ -40,7 +40,7 @@ demo-reset: ## drop + recreate dev DB, migrate, seed (target < 60 s)
 	$(MAKE) seed
 
 dev: up ## run api, worker, mocks and web together
-	uv run --directory backend honcho -d .. -f Procfile start
+	uv run --project backend honcho -f Procfile start
 
 api:
 	$(UV) uvicorn app.host.asgi:app --port 8000 --reload
@@ -70,7 +70,7 @@ openapi-check: openapi ## fail if the generated client drifted
 	git diff --exit-code -- web/src/api/
 
 security: ## dependency + secret scanning
-	$(UV) pip-audit --strict --progress-spinner off || true
+	$(UV) pip-audit --skip-editable --progress-spinner off
 	cd web && pnpm audit --audit-level high || true
 
 check: lint typecheck test openapi-check ## everything CI runs (except e2e)

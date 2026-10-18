@@ -37,8 +37,7 @@ jobs:
         env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
         continue-on-error: true
       - name: dependency audit
-        run: cd backend && uv run pip-audit --progress-spinner off
-        continue-on-error: true
+        run: cd backend && uv run pip-audit --skip-editable --progress-spinner off
   protected-paths:
     runs-on: ubuntu-latest
     steps:

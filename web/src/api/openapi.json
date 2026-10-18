@@ -47,7 +47,7 @@
    "Body_upload_api_ap_invoices_post": {
     "properties": {
      "file": {
-      "format": "binary",
+      "contentMediaType": "application/octet-stream",
       "title": "File",
       "type": "string"
      }
@@ -325,6 +325,23 @@
     "title": "QaBody",
     "type": "object"
    },
+   "ReasonBody": {
+    "properties": {
+     "reason": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Reason"
+     }
+    },
+    "title": "ReasonBody",
+    "type": "object"
+   },
    "RecommendBody": {
     "properties": {
      "decision": {
@@ -400,6 +417,30 @@
     "title": "RetryIn",
     "type": "object"
    },
+   "RevealBody": {
+    "properties": {
+     "field": {
+      "title": "Field",
+      "type": "string"
+     },
+     "reason": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Reason"
+     }
+    },
+    "required": [
+     "field"
+    ],
+    "title": "RevealBody",
+    "type": "object"
+   },
    "UpdateBody": {
     "properties": {
      "checks": {
@@ -431,6 +472,13 @@
    },
    "ValidationError": {
     "properties": {
+     "ctx": {
+      "title": "Context",
+      "type": "object"
+     },
+     "input": {
+      "title": "Input"
+     },
      "loc": {
       "items": {
        "anyOf": [
@@ -482,47 +530,6 @@
      }
     },
     "title": "VerifyBody",
-    "type": "object"
-   },
-   "app__tools__refunds__routes__ReasonBody": {
-    "properties": {
-     "reason": {
-      "anyOf": [
-       {
-        "type": "string"
-       },
-       {
-        "type": "null"
-       }
-      ],
-      "title": "Reason"
-     }
-    },
-    "title": "ReasonBody",
-    "type": "object"
-   },
-   "app__tools__refunds__routes__RevealBody": {
-    "properties": {
-     "field": {
-      "title": "Field",
-      "type": "string"
-     },
-     "reason": {
-      "anyOf": [
-       {
-        "type": "string"
-       },
-       {
-        "type": "null"
-       }
-      ],
-      "title": "Reason"
-     }
-    },
-    "required": [
-     "field"
-    ],
-    "title": "RevealBody",
     "type": "object"
    }
   }
@@ -711,7 +718,7 @@
      "content": {
       "application/json": {
        "schema": {
-        "$ref": "#/components/schemas/app__tools__refunds__routes__ReasonBody"
+        "$ref": "#/components/schemas/ReasonBody"
        }
       }
      },
@@ -1106,7 +1113,7 @@
      "content": {
       "application/json": {
        "schema": {
-        "$ref": "#/components/schemas/app__tools__refunds__routes__ReasonBody"
+        "$ref": "#/components/schemas/ReasonBody"
        }
       }
      },
@@ -1160,7 +1167,7 @@
      "content": {
       "application/json": {
        "schema": {
-        "$ref": "#/components/schemas/app__tools__refunds__routes__ReasonBody"
+        "$ref": "#/components/schemas/ReasonBody"
        }
       }
      },
@@ -1371,7 +1378,7 @@
      "content": {
       "application/json": {
        "schema": {
-        "$ref": "#/components/schemas/app__tools__refunds__routes__RevealBody"
+        "$ref": "#/components/schemas/RevealBody"
        }
       }
      },
@@ -2360,7 +2367,7 @@
      "content": {
       "application/json": {
        "schema": {
-        "$ref": "#/components/schemas/app__tools__refunds__routes__ReasonBody"
+        "$ref": "#/components/schemas/ReasonBody"
        }
       }
      },
@@ -2559,7 +2566,7 @@
      "content": {
       "application/json": {
        "schema": {
-        "$ref": "#/components/schemas/app__tools__refunds__routes__RevealBody"
+        "$ref": "#/components/schemas/RevealBody"
        }
       }
      },
@@ -3450,7 +3457,7 @@
      "content": {
       "application/json": {
        "schema": {
-        "$ref": "#/components/schemas/app__tools__refunds__routes__ReasonBody"
+        "$ref": "#/components/schemas/ReasonBody"
        }
       }
      },
@@ -3504,7 +3511,7 @@
      "content": {
       "application/json": {
        "schema": {
-        "$ref": "#/components/schemas/app__tools__refunds__routes__ReasonBody"
+        "$ref": "#/components/schemas/ReasonBody"
        }
       }
      },
@@ -3666,7 +3673,7 @@
      "content": {
       "application/json": {
        "schema": {
-        "$ref": "#/components/schemas/app__tools__refunds__routes__ReasonBody"
+        "$ref": "#/components/schemas/ReasonBody"
        }
       }
      },
@@ -3720,7 +3727,7 @@
      "content": {
       "application/json": {
        "schema": {
-        "$ref": "#/components/schemas/app__tools__refunds__routes__ReasonBody"
+        "$ref": "#/components/schemas/ReasonBody"
        }
       }
      },
@@ -3774,7 +3781,7 @@
      "content": {
       "application/json": {
        "schema": {
-        "$ref": "#/components/schemas/app__tools__refunds__routes__RevealBody"
+        "$ref": "#/components/schemas/RevealBody"
        }
       }
      },
@@ -3932,7 +3939,7 @@
      "content": {
       "application/json": {
        "schema": {
-        "$ref": "#/components/schemas/app__tools__refunds__routes__ReasonBody"
+        "$ref": "#/components/schemas/ReasonBody"
        }
       }
      },
@@ -4431,7 +4438,7 @@
      "content": {
       "application/json": {
        "schema": {
-        "$ref": "#/components/schemas/app__tools__refunds__routes__ReasonBody"
+        "$ref": "#/components/schemas/ReasonBody"
        }
       }
      },
@@ -4690,7 +4697,7 @@
      "content": {
       "application/json": {
        "schema": {
-        "$ref": "#/components/schemas/app__tools__refunds__routes__RevealBody"
+        "$ref": "#/components/schemas/RevealBody"
        }
       }
      },

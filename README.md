@@ -32,6 +32,7 @@ make setup        # uv sync, pnpm install, playwright chromium, git hooks
 make up           # Postgres :54320, mock Entra OIDC :8081 (docker compose)
 make demo-reset   # migrate + seed all tools
 make dev          # API :8000, worker, mocks :8090, web :5173
+make e2e          # browser tests (10) against the running stack, in a second shell
 ```
 
 Open http://localhost:5173, click **Sign in with Microsoft (mock)** and pick a persona on the mock Entra login page:

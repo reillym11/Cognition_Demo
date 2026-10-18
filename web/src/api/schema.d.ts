@@ -1311,10 +1311,7 @@ export interface components {
         };
         /** Body_upload_api_ap_invoices_post */
         Body_upload_api_ap_invoices_post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
         };
         /** CallbackBody */
@@ -1416,6 +1413,11 @@ export interface components {
              */
             result: "passed" | "failed";
         };
+        /** ReasonBody */
+        ReasonBody: {
+            /** Reason */
+            reason?: string | null;
+        };
         /** RecommendBody */
         RecommendBody: {
             /**
@@ -1442,6 +1444,13 @@ export interface components {
             /** Reason */
             reason: string;
         };
+        /** RevealBody */
+        RevealBody: {
+            /** Field */
+            field: string;
+            /** Reason */
+            reason?: string | null;
+        };
         /** UpdateBody */
         UpdateBody: {
             /** Checks */
@@ -1457,6 +1466,10 @@ export interface components {
         };
         /** ValidationError */
         ValidationError: {
+            /** Context */
+            ctx?: Record<string, never>;
+            /** Input */
+            input?: unknown;
             /** Location */
             loc: (string | number)[];
             /** Message */
@@ -1470,18 +1483,6 @@ export interface components {
             fields?: {
                 [key: string]: unknown;
             };
-            /** Reason */
-            reason?: string | null;
-        };
-        /** ReasonBody */
-        app__tools__refunds__routes__ReasonBody: {
-            /** Reason */
-            reason?: string | null;
-        };
-        /** RevealBody */
-        app__tools__refunds__routes__RevealBody: {
-            /** Field */
-            field: string;
             /** Reason */
             reason?: string | null;
         };
@@ -1639,7 +1640,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["app__tools__refunds__routes__ReasonBody"];
+                "application/json": components["schemas"]["ReasonBody"];
             };
         };
         responses: {
@@ -1899,7 +1900,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["app__tools__refunds__routes__ReasonBody"];
+                "application/json": components["schemas"]["ReasonBody"];
             };
         };
         responses: {
@@ -1936,7 +1937,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["app__tools__refunds__routes__ReasonBody"];
+                "application/json": components["schemas"]["ReasonBody"];
             };
         };
         responses: {
@@ -2091,7 +2092,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["app__tools__refunds__routes__RevealBody"];
+                "application/json": components["schemas"]["RevealBody"];
             };
         };
         responses: {
@@ -2610,7 +2611,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["app__tools__refunds__routes__ReasonBody"];
+                "application/json": components["schemas"]["ReasonBody"];
             };
         };
         responses: {
@@ -2750,7 +2751,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["app__tools__refunds__routes__RevealBody"];
+                "application/json": components["schemas"]["RevealBody"];
             };
         };
         responses: {
@@ -3223,7 +3224,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["app__tools__refunds__routes__ReasonBody"];
+                "application/json": components["schemas"]["ReasonBody"];
             };
         };
         responses: {
@@ -3260,7 +3261,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["app__tools__refunds__routes__ReasonBody"];
+                "application/json": components["schemas"]["ReasonBody"];
             };
         };
         responses: {
@@ -3371,7 +3372,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["app__tools__refunds__routes__ReasonBody"];
+                "application/json": components["schemas"]["ReasonBody"];
             };
         };
         responses: {
@@ -3408,7 +3409,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["app__tools__refunds__routes__ReasonBody"];
+                "application/json": components["schemas"]["ReasonBody"];
             };
         };
         responses: {
@@ -3445,7 +3446,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["app__tools__refunds__routes__RevealBody"];
+                "application/json": components["schemas"]["RevealBody"];
             };
         };
         responses: {
@@ -3515,7 +3516,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["app__tools__refunds__routes__ReasonBody"];
+                "application/json": components["schemas"]["ReasonBody"];
             };
         };
         responses: {
@@ -3833,7 +3834,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["app__tools__refunds__routes__ReasonBody"];
+                "application/json": components["schemas"]["ReasonBody"];
             };
         };
         responses: {
@@ -3998,7 +3999,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["app__tools__refunds__routes__RevealBody"];
+                "application/json": components["schemas"]["RevealBody"];
             };
         };
         responses: {
