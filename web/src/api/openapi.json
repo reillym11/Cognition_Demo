@@ -139,23 +139,6 @@
     "title": "QaBody",
     "type": "object"
    },
-   "ReasonBody": {
-    "properties": {
-     "reason": {
-      "anyOf": [
-       {
-        "type": "string"
-       },
-       {
-        "type": "null"
-       }
-      ],
-      "title": "Reason"
-     }
-    },
-    "title": "ReasonBody",
-    "type": "object"
-   },
    "RecommendBody": {
     "properties": {
      "decision": {
@@ -189,24 +172,11 @@
     "title": "RecommendBody",
     "type": "object"
    },
-   "RetryIn": {
+   "RefundBody": {
     "properties": {
-     "reason": {
-      "title": "Reason",
-      "type": "string"
-     }
-    },
-    "required": [
-     "reason"
-    ],
-    "title": "RetryIn",
-    "type": "object"
-   },
-   "RevealBody": {
-    "properties": {
-     "field": {
-      "title": "Field",
-      "type": "string"
+     "amount_cents": {
+      "title": "Amount Cents",
+      "type": "integer"
      },
      "reason": {
       "anyOf": [
@@ -218,12 +188,30 @@
        }
       ],
       "title": "Reason"
+     },
+     "reason_code": {
+      "title": "Reason Code",
+      "type": "string"
      }
     },
     "required": [
-     "field"
+     "amount_cents",
+     "reason_code"
     ],
-    "title": "RevealBody",
+    "title": "RefundBody",
+    "type": "object"
+   },
+   "RetryIn": {
+    "properties": {
+     "reason": {
+      "title": "Reason",
+      "type": "string"
+     }
+    },
+    "required": [
+     "reason"
+    ],
+    "title": "RetryIn",
     "type": "object"
    },
    "ValidationError": {
@@ -257,6 +245,47 @@
      "type"
     ],
     "title": "ValidationError",
+    "type": "object"
+   },
+   "app__tools__refunds__routes__ReasonBody": {
+    "properties": {
+     "reason": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Reason"
+     }
+    },
+    "title": "ReasonBody",
+    "type": "object"
+   },
+   "app__tools__refunds__routes__RevealBody": {
+    "properties": {
+     "field": {
+      "title": "Field",
+      "type": "string"
+     },
+     "reason": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Reason"
+     }
+    },
+    "required": [
+     "field"
+    ],
+    "title": "RevealBody",
     "type": "object"
    }
   }
@@ -1272,7 +1301,7 @@
      "content": {
       "application/json": {
        "schema": {
-        "$ref": "#/components/schemas/ReasonBody"
+        "$ref": "#/components/schemas/app__tools__refunds__routes__ReasonBody"
        }
       }
      },
@@ -1326,7 +1355,7 @@
      "content": {
       "application/json": {
        "schema": {
-        "$ref": "#/components/schemas/ReasonBody"
+        "$ref": "#/components/schemas/app__tools__refunds__routes__ReasonBody"
        }
       }
      },
@@ -1488,7 +1517,7 @@
      "content": {
       "application/json": {
        "schema": {
-        "$ref": "#/components/schemas/ReasonBody"
+        "$ref": "#/components/schemas/app__tools__refunds__routes__ReasonBody"
        }
       }
      },
@@ -1542,7 +1571,7 @@
      "content": {
       "application/json": {
        "schema": {
-        "$ref": "#/components/schemas/ReasonBody"
+        "$ref": "#/components/schemas/app__tools__refunds__routes__ReasonBody"
        }
       }
      },
@@ -1596,7 +1625,7 @@
      "content": {
       "application/json": {
        "schema": {
-        "$ref": "#/components/schemas/RevealBody"
+        "$ref": "#/components/schemas/app__tools__refunds__routes__RevealBody"
        }
       }
      },
@@ -1754,7 +1783,7 @@
      "content": {
       "application/json": {
        "schema": {
-        "$ref": "#/components/schemas/ReasonBody"
+        "$ref": "#/components/schemas/app__tools__refunds__routes__ReasonBody"
        }
       }
      },
@@ -1960,6 +1989,593 @@
     "summary": "Ready",
     "tags": [
      "core"
+    ]
+   }
+  },
+  "/api/refunds/export": {
+   "get": {
+    "operationId": "export_api_refunds_export_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "reason",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Reason"
+      }
+     },
+     {
+      "in": "query",
+      "name": "status",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Status"
+      }
+     },
+     {
+      "in": "query",
+      "name": "mine",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Mine"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "title": "Response Export Api Refunds Export Get"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Export",
+    "tags": [
+     "refunds"
+    ]
+   }
+  },
+  "/api/refunds/requests": {
+   "get": {
+    "operationId": "list_refunds_api_refunds_requests_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "status",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Status"
+      }
+     },
+     {
+      "in": "query",
+      "name": "mine",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Mine"
+      }
+     },
+     {
+      "in": "query",
+      "name": "sort",
+      "required": false,
+      "schema": {
+       "default": "-id",
+       "title": "Sort",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "page",
+      "required": false,
+      "schema": {
+       "default": 1,
+       "minimum": 1,
+       "title": "Page",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "page_size",
+      "required": false,
+      "schema": {
+       "default": 50,
+       "maximum": 200,
+       "minimum": 1,
+       "title": "Page Size",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response List Refunds Api Refunds Requests Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "List Refunds",
+    "tags": [
+     "refunds"
+    ]
+   }
+  },
+  "/api/refunds/requests/{refund_id}": {
+   "get": {
+    "operationId": "get_refund_api_refunds_requests__refund_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "refund_id",
+      "required": true,
+      "schema": {
+       "title": "Refund Id",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Get Refund Api Refunds Requests  Refund Id  Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Refund",
+    "tags": [
+     "refunds"
+    ]
+   }
+  },
+  "/api/refunds/requests/{refund_id}/audit": {
+   "get": {
+    "operationId": "refund_audit_api_refunds_requests__refund_id__audit_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "refund_id",
+      "required": true,
+      "schema": {
+       "title": "Refund Id",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "additionalProperties": true,
+          "type": "object"
+         },
+         "title": "Response Refund Audit Api Refunds Requests  Refund Id  Audit Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Refund Audit",
+    "tags": [
+     "refunds"
+    ]
+   }
+  },
+  "/api/refunds/requests/{refund_id}/reconcile": {
+   "post": {
+    "operationId": "reconcile_api_refunds_requests__refund_id__reconcile_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "refund_id",
+      "required": true,
+      "schema": {
+       "title": "Refund Id",
+       "type": "integer"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/app__tools__refunds__routes__ReasonBody"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Reconcile Api Refunds Requests  Refund Id  Reconcile Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Reconcile",
+    "tags": [
+     "refunds"
+    ]
+   }
+  },
+  "/api/refunds/stats": {
+   "get": {
+    "operationId": "stats_api_refunds_stats_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Stats Api Refunds Stats Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Stats",
+    "tags": [
+     "refunds"
+    ]
+   }
+  },
+  "/api/refunds/transactions": {
+   "get": {
+    "operationId": "list_transactions_api_refunds_transactions_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "q",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Q"
+      }
+     },
+     {
+      "in": "query",
+      "name": "sort",
+      "required": false,
+      "schema": {
+       "default": "-captured_at",
+       "title": "Sort",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "page",
+      "required": false,
+      "schema": {
+       "default": 1,
+       "minimum": 1,
+       "title": "Page",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "page_size",
+      "required": false,
+      "schema": {
+       "default": 50,
+       "maximum": 200,
+       "minimum": 1,
+       "title": "Page Size",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response List Transactions Api Refunds Transactions Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "List Transactions",
+    "tags": [
+     "refunds"
+    ]
+   }
+  },
+  "/api/refunds/transactions/{txn_id}": {
+   "get": {
+    "operationId": "get_transaction_api_refunds_transactions__txn_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "txn_id",
+      "required": true,
+      "schema": {
+       "title": "Txn Id",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Get Transaction Api Refunds Transactions  Txn Id  Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Transaction",
+    "tags": [
+     "refunds"
+    ]
+   }
+  },
+  "/api/refunds/transactions/{txn_id}/refunds": {
+   "post": {
+    "operationId": "create_refund_api_refunds_transactions__txn_id__refunds_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "txn_id",
+      "required": true,
+      "schema": {
+       "title": "Txn Id",
+       "type": "integer"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RefundBody"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Create Refund Api Refunds Transactions  Txn Id  Refunds Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Create Refund",
+    "tags": [
+     "refunds"
+    ]
+   }
+  },
+  "/api/refunds/transactions/{txn_id}/reveal": {
+   "post": {
+    "operationId": "reveal_api_refunds_transactions__txn_id__reveal_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "txn_id",
+      "required": true,
+      "schema": {
+       "title": "Txn Id",
+       "type": "integer"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/app__tools__refunds__routes__RevealBody"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": {
+          "type": "string"
+         },
+         "title": "Response Reveal Api Refunds Transactions  Txn Id  Reveal Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Reveal",
+    "tags": [
+     "refunds"
     ]
    }
   }

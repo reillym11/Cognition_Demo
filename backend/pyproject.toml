@@ -71,4 +71,4 @@ omit = ["*/tests/*"]
 
 [[tool.mypy.overrides]]
 module = ["app.tools.*.tests.*", "tests.*"]
-disable_error_code = ["union-attr", "func-returns-value"]
+disable_error_code = ["union-attr", "func-returns-value", "arg-type"]

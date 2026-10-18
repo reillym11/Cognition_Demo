@@ -48,7 +48,7 @@ def _fault(name: str) -> str | None:
 
 class FaultIn(BaseModel):
     name: str
-    mode: str  # error_500 | timeout | timeout_after_success
+    mode: str  # error_500 | timeout | timeout_after_success | lost_response
     times: int = 1
 
 
@@ -150,6 +150,8 @@ def processor_refund(body: RefundIn, request: Request) -> dict[str, Any]:
         "idempotency_key": key,
     }
     STATE["refunds"][key] = rec
+    if mode == "lost_response":
+        raise HTTPException(504, "gateway timeout")  # refund recorded, response lost (fast variant for tests)
     if mode == "timeout_after_success":
         time.sleep(6)  # refund recorded, but the caller times out and never sees the response
     return rec
