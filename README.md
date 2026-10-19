@@ -41,7 +41,7 @@ Open http://localhost:5173, click **Sign in with Microsoft (mock)** and pick a p
 |---|---|---|
 | `ana.analyst`, `avery.analyst` | KYC.Analyst (US) | Claim + recommend a KYC case; the other analyst decides |
 | `sam.senior` | KYC.SeniorReviewer | High-risk second review |
-| `casey.contractor` | Support.Contractor (EU) | Sees only EU rows, PII masked |
+| `casey.contractor` | Support.Contractor (EU) | Sees only EU merchants' refund transactions (Contoso, Fabrikam), PII masked |
 | `alex.agent` / `fin.approver` | Support.Agent / Finance.Approver | Request a refund over $500 / approve it |
 | `pat.pm` / `erin.engineer` | Eng.PM / Eng.Engineer | Change a prod flag / approve it |
 | `hana.handler`, `hugo.handler`, `cora.compliance` | Complaints / Compliance | Work a regulatory complaint through compliance review |

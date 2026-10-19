@@ -8,7 +8,8 @@ MANIFEST = ToolManifest(
     name="Refunds",
     description="Refund requests with cumulative caps, a second approver over threshold, and safe processor retries.",
     permissions={
-        "refunds.read": "View transactions and refunds (customer PII masked)",
+        "refunds.read": "View transactions and refunds in your region (customer PII masked)",
+        "refunds.all_regions": "See transactions and refunds for merchants in every region",
         "refunds.request": "Request a refund",
         "refunds.request.direct": "Refunds under the threshold execute without a second person",
         "refunds.approve": "Approve refunds that need a second person",
@@ -17,11 +18,17 @@ MANIFEST = ToolManifest(
         "refunds.export": "Export refunds",
     },
     grants={
-        "Support.Agent": ["refunds.read", "refunds.request", "refunds.request.direct", "refunds.pii.reveal"],
+        "Support.Agent": [
+            "refunds.read",
+            "refunds.all_regions",
+            "refunds.request",
+            "refunds.request.direct",
+            "refunds.pii.reveal",
+        ],
         "Support.Contractor": ["refunds.read", "refunds.request"],
-        "Finance.Approver": ["refunds.read", "refunds.approve", "refunds.export"],
-        "Finance.Controller": ["refunds.read", "refunds.export", "refunds.reconcile"],
-        "Audit.Auditor": ["refunds.read", "refunds.export"],
+        "Finance.Approver": ["refunds.read", "refunds.all_regions", "refunds.approve", "refunds.export"],
+        "Finance.Controller": ["refunds.read", "refunds.all_regions", "refunds.export", "refunds.reconcile"],
+        "Audit.Auditor": ["refunds.read", "refunds.all_regions", "refunds.export"],
     },
     router=router,
     nav=[
