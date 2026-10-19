@@ -14,7 +14,8 @@ from app.foundation.authz import Principal, system_principal
 from app.foundation.datacls import mask_record
 from app.foundation.db import utcnow
 from app.foundation.errors import Conflict, Forbidden, Invalid, NotFound, require_reason
-from app.foundation.models import ApprovalRequest
+from app.foundation.models import ApprovalRequest, PolicyValue
+from app.foundation.registry import get_registry
 from app.tools.kyc.models import OPEN_STATUSES, KycCase, KycDecision
 
 CHAIN = "kyc"
@@ -330,6 +331,67 @@ def fastlane_filter(criteria: dict[str, Any]) -> Any:
     if criteria.get("require_docs_verified", True):
         conds.append(KycCase.docs_verified.is_(True))
     return and_(*conds)
+
+
+def fastlane_basis(db: Session, c: KycCase) -> dict[str, Any]:
+    """The criteria version an auto-cleared case was judged against and how each fact compared to it."""
+    version = (
+        db.execute(
+            select(KycDecision.policy_version)
+            .where(KycDecision.case_id == c.id, KycDecision.reason_code == "AUTO_CLEAR")
+            .order_by(KycDecision.id.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+        or 0
+    )
+    row = db.execute(
+        select(PolicyValue.value).where(
+            PolicyValue.key == "kyc.fastlane_criteria", PolicyValue.version == version
+        )
+    ).scalar_one_or_none()
+    criteria = row if row is not None else get_registry().policies["kyc.fastlane_criteria"].default
+    checks = [
+        {
+            "label": "Risk level",
+            "required": "Low",
+            "actual": c.risk_level.capitalize(),
+            "met": c.risk_level == "low",
+        },
+        {
+            "label": "Vendor score",
+            "required": f"{criteria['max_vendor_score']} or lower",
+            "actual": str(c.vendor_score),
+            "met": c.vendor_score <= int(criteria["max_vendor_score"]),
+        },
+        {
+            "label": "Watchlist hits",
+            "required": f"{criteria['max_watchlist_hits']} or fewer",
+            "actual": str(c.watchlist_hits),
+            "met": c.watchlist_hits <= int(criteria["max_watchlist_hits"]),
+        },
+        {
+            "label": "Documents verified",
+            "required": "Yes" if criteria.get("require_docs_verified", True) else "Not required",
+            "actual": "Yes" if c.docs_verified else "No",
+            "met": c.docs_verified or not criteria.get("require_docs_verified", True),
+        },
+        {
+            "label": "Senior review",
+            "required": "Not required",
+            "actual": "Required" if c.requires_senior else "Not required",
+            "met": not c.requires_senior,
+        },
+    ]
+    return {"criteria_version": version, "criteria": criteria, "checks": checks}
+
+
+def decided_by_name(db: Session, c: KycCase) -> str | None:
+    return db.execute(
+        select(KycDecision.decided_by_name)
+        .where(KycDecision.case_id == c.id)
+        .order_by(KycDecision.id.desc())
+        .limit(1)
+    ).scalar_one_or_none()
 
 
 def run_fastlane(db: Session, payload: dict[str, Any]) -> None:

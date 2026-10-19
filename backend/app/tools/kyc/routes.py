@@ -119,7 +119,10 @@ def get_case(
         .limit(1)
     ).scalar_one_or_none()
     return {
-        "case": service.to_dict(c),
+        "case": {
+            **service.to_dict(c),
+            "decided_by_name": service.decided_by_name(db, c) if c.decided_at else None,
+        },
         "approval": approvals.to_dict(req, approvals.decisions_for(db, req.id), p) if req else None,
         "can": {
             "claim": p.has("kyc.case.work")
@@ -235,7 +238,7 @@ def qa_queue(
         .scalars()
         .all()
     )
-    return [service.to_dict(c) for c in rows]
+    return [{**service.to_dict(c), "fastlane": service.fastlane_basis(db, c)} for c in rows]
 
 
 @router.post("/cases/{case_id}/qa")

@@ -328,3 +328,16 @@ def test_property_nobody_who_touched_can_decide(preparers, decider):
     except Forbidden:
         decided = False
     assert decided == (decider not in preparers and decider != "compliance.admin")
+
+
+def test_qa_queue_explains_fastlane_basis(login):
+    cid = make_case(risk_level="low", vendor_score=5)
+    with session_scope() as db:
+        db.execute(text("UPDATE policy_values SET value = '1.0' WHERE key='kyc.qa_sample_rate'"))
+    with session_scope() as db:
+        service.run_fastlane(db, {})
+    rows = login("kyc.senior").get("/api/kyc/qa").json()
+    row = next(r for r in rows if r["id"] == cid)
+    checks = {c["label"]: c for c in row["fastlane"]["checks"]}
+    assert checks["Vendor score"]["actual"] == "5" and all(c["met"] for c in checks.values())
+    assert row["fastlane"]["criteria"]["max_vendor_score"] == 20
