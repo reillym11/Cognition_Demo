@@ -1,4 +1,5 @@
-"""Directory adapter: re-validates app-role assignments (models Microsoft Graph appRoleAssignments)."""
+"""Directory adapter: re-validates app-role assignments (models Microsoft Graph appRoleAssignments) and the
+`region` directory extension attribute used for row scopes."""
 
 from dataclasses import dataclass
 from functools import lru_cache
@@ -14,6 +15,7 @@ class DirectoryEntry:
     oid: str
     enabled: bool
     roles: list[str]
+    region: str | None = None
 
 
 class Directory(Protocol):
@@ -30,7 +32,9 @@ class HttpDirectory:
             return None
         r.raise_for_status()
         d = r.json()
-        return DirectoryEntry(oid=oid, enabled=d["accountEnabled"], roles=d["appRoles"])
+        return DirectoryEntry(
+            oid=oid, enabled=d["accountEnabled"], roles=d["appRoles"], region=d.get("region")
+        )
 
 
 _override: Directory | None = None

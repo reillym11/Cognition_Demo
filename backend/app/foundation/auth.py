@@ -254,6 +254,7 @@ def principal_from_request(request: Request) -> Principal:
                 raise_after = "account disabled"
             else:
                 sess.roles = sorted(entry.roles)
+                sess.region = entry.region
                 sess.roles_checked_at = now
         if not raise_after:
             if request.method not in SAFE_METHODS:

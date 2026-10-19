@@ -1,3 +1,4 @@
+import dataclasses
 import threading
 
 import pytest
@@ -11,7 +12,7 @@ from app.foundation.errors import Conflict, Forbidden, Invalid
 from app.tools.kyc import service
 from app.tools.kyc.models import KycCase, KycDecision
 from app.tools.kyc.seed import seed
-from testing import principal
+from testing import PERSONAS, principal
 
 
 def make_case(**kw) -> int:
@@ -206,6 +207,22 @@ def test_region_row_scope_and_masking(login):
     item = next(i for i in body["items"] if i["id"] == us)
     assert item["ssn"] == "***-**-3456" and item["email"].startswith("j***@")
     assert login("cora.compliance").get(f"/api/kyc/cases/{eu}").status_code == 200
+
+
+def test_directory_region_change_rescopes_live_session(login, directory, monkeypatch):
+    from app.foundation.settings import get_settings
+
+    monkeypatch.setattr(get_settings(), "roles_revalidate_seconds", 0)
+    us = make_case(region="US")
+    eu = make_case(region="EU")
+    c = login("ana.analyst")
+    assert c.get(f"/api/kyc/cases/{eu}").status_code == 404
+    oid = PERSONAS["ana.analyst"]["oid"]
+    directory.entries[oid] = dataclasses.replace(directory.entries[oid], region="EU")
+    assert c.get(f"/api/kyc/cases/{eu}").status_code == 200
+    assert c.get(f"/api/kyc/cases/{us}").status_code == 404
+    directory.entries[oid] = dataclasses.replace(directory.entries[oid], region=None)
+    assert c.get(f"/api/kyc/cases/{eu}").status_code == 404
 
 
 def test_reveal_is_audited_and_permissioned(login):

@@ -24,7 +24,10 @@ def reset() -> None:
     personas = json.loads(PERSONAS.read_text())["personas"]
     STATE.clear()
     STATE.update(
-        directory={p["oid"]: {"accountEnabled": True, "appRoles": p.get("roles") or []} for p in personas},
+        directory={
+            p["oid"]: {"accountEnabled": True, "appRoles": p.get("roles") or [], "region": p.get("region")}
+            for p in personas
+        },
         faults={},  # e.g. {"processor.refund": {"mode": "timeout_after_success", "times": 1}}
         refunds={},  # idempotency_key -> processor refund record
         teams=[],
@@ -78,6 +81,7 @@ def dir_user(oid: str) -> dict[str, Any]:
 class RolesIn(BaseModel):
     appRoles: list[str] | None = None
     accountEnabled: bool | None = None
+    region: str | None = None
 
 
 @app.patch("/directory/users/{oid}")
@@ -87,6 +91,8 @@ def dir_update(oid: str, body: RolesIn) -> dict[str, Any]:
         u["appRoles"] = body.appRoles
     if body.accountEnabled is not None:
         u["accountEnabled"] = body.accountEnabled
+    if body.region is not None:
+        u["region"] = body.region
     return {"id": oid, **u}
 
 
