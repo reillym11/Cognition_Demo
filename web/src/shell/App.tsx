@@ -3,7 +3,7 @@ import {
   ArrowUndo20Regular, ChatWarning20Regular, DocumentText20Regular, Flag20Regular, Home20Regular, MailInbox20Regular,
   PersonSearch20Regular, ShieldCheckmark20Regular, SignOut20Regular,
 } from "@fluentui/react-icons";
-import { Fragment, useState, type ReactElement } from "react";
+import { Fragment, useEffect, useState, type ReactElement } from "react";
 import { Link, NavLink, Navigate, Route, Routes, useLocation, useSearchParams } from "react-router-dom";
 import { http } from "../api/client";
 import { homeWidgets, toolRoutes } from "../tools/registry";
@@ -66,7 +66,18 @@ export function LoginPage() {
   const [who, setWho] = useState(PERSONAS[0].username);
   const err = sp.get("error");
   const chosen = PERSONAS.find((p) => p.username === who);
-  const href = `/api/auth/login?return_to=${encodeURIComponent(sp.get("next") ?? "/")}&login_hint=${encodeURIComponent(who)}`;
+  const signInHref = (role: string) => `/api/auth/login?return_to=${encodeURIComponent(sp.get("next") ?? "/")}&login_hint=${encodeURIComponent(role)}`;
+  const href = signInHref(who);
+  // A sign-in that lost its pending state (fast role switching, back button, two tabs) retries once by itself.
+  useEffect(() => {
+    const last = sessionStorage.getItem("itp_last_role");
+    if (err === "state_mismatch" && last && !sessionStorage.getItem("itp_retried")) {
+      sessionStorage.setItem("itp_retried", "1");
+      window.location.replace(signInHref(last));
+    } else if (!err) {
+      sessionStorage.removeItem("itp_retried");
+    }
+  }, [err]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <main className={s.loginMain}>
       <Card className={mergeClasses(s.login, "space-y-4")}>
@@ -89,7 +100,7 @@ export function LoginPage() {
           </Select>
         </Field>
         <div>
-          <a className={s.signIn} href={href}>Sign in</a>
+          <a className={s.signIn} href={href} onClick={() => { sessionStorage.setItem("itp_last_role", who); sessionStorage.removeItem("itp_retried"); }}>Sign in</a>
         </div>
       </Card>
     </main>
