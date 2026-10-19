@@ -201,3 +201,81 @@ def test_closed_request_rejects_decisions():
         approvals.decide(db, pia, rid, "reject", "not now")
     with session_scope() as db, pytest.raises(Conflict):
         approvals.decide(db, principal("cam.controller"), rid, "approve", "late")
+
+
+def _evidence_events(n: int) -> None:
+    p = principal("aud.auditor")
+    with session_scope() as db:
+        for i in range(n):
+            audit.record(db, p, "test.event", "policy", i, chain="t", reason=f"r{i}")
+
+
+def _set_policy(key: str, value: int) -> None:
+    from app.foundation.models import PolicyValue
+
+    with session_scope() as db:
+        v = policy.current_version(db, key) + 1
+        db.add(PolicyValue(key=key, version=v, value=value, created_by="test"))
+
+
+def test_evidence_pack_streams_events_and_is_audited(login):
+    import io
+    import json
+    import zipfile
+    from datetime import UTC, datetime
+
+    from sqlalchemy import select
+
+    from app.foundation.models import AuditEvent
+
+    _evidence_events(3)
+    today = datetime.now(UTC).date()
+    r = login("aud.auditor").get(
+        "/api/audit/evidence-pack", params={"start": today, "end": today, "reason": "quarterly audit"}
+    )
+    assert r.status_code == 200, r.text
+    assert int(r.headers["content-length"]) == len(r.content)
+    z = zipfile.ZipFile(io.BytesIO(r.content))
+    lines = z.read("audit-events.jsonl").decode().splitlines()
+    assert [json.loads(x)["action"] for x in lines] == ["test.event"] * 3
+    assert all(v["ok"] for v in json.loads(z.read("chain-verification.json")))
+    with session_scope() as db:
+        ev = db.execute(select(AuditEvent).where(AuditEvent.action == "audit.evidence_pack")).scalar_one()
+    assert ev.after["events"] == 3 and ev.reason == "quarterly audit"
+
+
+@pytest.mark.parametrize(
+    ("start", "end", "code"),
+    [
+        ("0001-01-01", "9998-12-31", "evidence_range_too_long"),
+        ("2026-01-01", "2027-01-02", "evidence_range_too_long"),  # 367 days inclusive
+        ("2026-02-01", "2026-01-31", "evidence_range_invalid"),
+    ],
+)
+def test_evidence_pack_rejects_bad_ranges(login, start, end, code):
+    r = login("aud.auditor").get(
+        "/api/audit/evidence-pack", params={"start": start, "end": end, "reason": "quarterly audit"}
+    )
+    assert r.status_code == 422 and r.json()["code"] == code
+
+
+def test_evidence_pack_range_boundary_is_inclusive(login):
+    c = login("aud.auditor")
+    params = {"start": "2026-01-01", "end": "2027-01-01", "reason": "annual"}  # 366 days inclusive
+    assert c.get("/api/audit/evidence-pack", params=params).status_code == 200
+    _set_policy("core.evidence_pack_max_days", 365)
+    r = c.get("/api/audit/evidence-pack", params=params)
+    assert r.status_code == 422 and r.json()["code"] == "evidence_range_too_long"
+
+
+def test_evidence_pack_rejects_too_many_events(login):
+    from datetime import UTC, datetime
+
+    _evidence_events(3)
+    today = datetime.now(UTC).date()
+    params = {"start": today, "end": today, "reason": "quarterly audit"}
+    _set_policy("core.evidence_pack_max_events", 3)
+    assert login("aud.auditor").get("/api/audit/evidence-pack", params=params).status_code == 200
+    _set_policy("core.evidence_pack_max_events", 2)
+    r = login("aud.auditor").get("/api/audit/evidence-pack", params=params)
+    assert r.status_code == 422 and r.json()["code"] == "evidence_too_many_events"

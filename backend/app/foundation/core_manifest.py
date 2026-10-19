@@ -1,13 +1,14 @@
 """The 'core' tool: cross-cutting admin surfaces (audit, approvals inbox, policy, jobs, access matrix)."""
 
-import io
 import json
+import tempfile
 import zipfile
+from collections.abc import Iterator
 from datetime import UTC, date, datetime, time, timedelta
-from typing import Any
+from typing import IO, Any
 
 from fastapi import APIRouter, Depends, Query, Request
-from fastapi.responses import Response
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import and_, func, or_, select, true
 from sqlalchemy.orm import Session
@@ -16,9 +17,9 @@ from app.foundation import approvals, audit, jobs, notify, policy
 from app.foundation.authz import Principal, authenticated, public, require
 from app.foundation.datacls import Classification
 from app.foundation.db import get_db
-from app.foundation.errors import NotFound, require_reason
+from app.foundation.errors import Invalid, NotFound, require_reason
 from app.foundation.models import ApprovalRequest, AuditEvent, Job
-from app.foundation.registry import ApprovalKind, NavItem, ToolManifest, get_registry
+from app.foundation.registry import ApprovalKind, NavItem, PolicyDef, ToolManifest, get_registry
 
 router = APIRouter(prefix="/api", tags=["core"])
 
@@ -167,6 +168,10 @@ def audit_verify(
     return [vars(audit.verify_chain(db, c)) for c in audit.chains(db)]
 
 
+EVIDENCE_PACK_SPOOL_BYTES = 8 * 1024 * 1024
+EVIDENCE_PACK_STREAM_ROWS = 1000
+
+
 @router.get("/audit/evidence-pack")
 def evidence_pack(
     request: Request,
@@ -175,34 +180,55 @@ def evidence_pack(
     reason: str,
     p: Principal = Depends(require("core.audit.evidence")),
     db: Session = Depends(get_db),
-) -> Response:
+) -> StreamingResponse:
     reason = require_reason(reason, "an evidence pack")
+    if end < start:
+        raise Invalid("end date must not be before start date", code="evidence_range_invalid")
+    max_days = policy.get(db, "core.evidence_pack_max_days")
+    if (end - start).days + 1 > max_days:
+        raise Invalid(
+            f"evidence pack range exceeds {max_days} days; split it into smaller ranges",
+            code="evidence_range_too_long",
+        )
     t0 = datetime.combine(start, time.min, tzinfo=UTC)
     t1 = datetime.combine(end, time.min, tzinfo=UTC) + timedelta(days=1)
-    events = (
-        db.execute(
-            select(AuditEvent)
-            .where(AuditEvent.occurred_at >= t0, AuditEvent.occurred_at < t1)
-            .order_by(AuditEvent.seq)
+    in_range = and_(AuditEvent.occurred_at >= t0, AuditEvent.occurred_at < t1)
+    n_events = db.execute(select(func.count()).select_from(AuditEvent).where(in_range)).scalar_one()
+    max_events = policy.get(db, "core.evidence_pack_max_events")
+    if n_events > max_events:
+        raise Invalid(
+            f"evidence pack would contain {n_events} events (limit {max_events}); narrow the date range",
+            code="evidence_too_many_events",
         )
-        .scalars()
-        .all()
-    )
     verification = [vars(audit.verify_chain(db, c)) for c in audit.chains(db)]
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        z.writestr("audit-events.jsonl", "\n".join(json.dumps(audit.to_dict(e), default=str) for e in events))
-        z.writestr("chain-verification.json", json.dumps(verification, indent=2, default=str))
-        z.writestr("access-matrix.md", access_matrix_markdown(request.app))
-        z.writestr(
-            "README.txt",
-            (
-                f"Evidence pack {start}..{end}, generated {datetime.now(UTC).isoformat()} by {p.username}.\n"
-                "audit-events.jsonl: every audit event in range (PII appears only as keyed fingerprints).\n"
-                "chain-verification.json: full hash-chain verification per chain at generation time.\n"
-                "access-matrix.md: roles -> permissions -> routes, generated from code.\n"
-            ),
-        )
+    buf = tempfile.SpooledTemporaryFile(max_size=EVIDENCE_PACK_SPOOL_BYTES)  # noqa: SIM115 - closed after streaming
+    try:
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+            with z.open("audit-events.jsonl", "w") as out:
+                events = db.execute(
+                    select(AuditEvent)
+                    .where(in_range)
+                    .order_by(AuditEvent.seq)
+                    .execution_options(yield_per=EVIDENCE_PACK_STREAM_ROWS)
+                ).scalars()
+                for e in events:
+                    out.write(json.dumps(audit.to_dict(e), default=str).encode() + b"\n")
+            z.writestr("chain-verification.json", json.dumps(verification, indent=2, default=str))
+            z.writestr("access-matrix.md", access_matrix_markdown(request.app))
+            z.writestr(
+                "README.txt",
+                (
+                    f"Evidence pack {start}..{end}, generated {datetime.now(UTC).isoformat()} by {p.username}.\n"
+                    "audit-events.jsonl: every audit event in range (PII appears only as keyed fingerprints).\n"
+                    "chain-verification.json: full hash-chain verification per chain at generation time.\n"
+                    "access-matrix.md: roles -> permissions -> routes, generated from code.\n"
+                ),
+            )
+        size = buf.tell()
+        buf.seek(0)
+    except BaseException:
+        buf.close()
+        raise
     audit.record(
         db,
         p,
@@ -211,13 +237,24 @@ def evidence_pack(
         f"{start}..{end}",
         chain="core",
         reason=reason,
-        after={"events": len(events), "chains_ok": all(v["ok"] for v in verification)},
+        after={"events": n_events, "chains_ok": all(v["ok"] for v in verification)},
     )
-    return Response(
-        buf.getvalue(),
+    return StreamingResponse(
+        _read_and_close(buf),
         media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="evidence-{start}-{end}.zip"'},
+        headers={
+            "Content-Disposition": f'attachment; filename="evidence-{start}-{end}.zip"',
+            "Content-Length": str(size),
+        },
     )
+
+
+def _read_and_close(f: IO[bytes], chunk: int = 64 * 1024) -> Iterator[bytes]:
+    try:
+        while data := f.read(chunk):
+            yield data
+    finally:
+        f.close()
 
 
 # ---- access matrix ----
@@ -403,6 +440,14 @@ MANIFEST = ToolManifest(
     jobs={"core.notify_teams": notify.deliver},
     approval_kinds={
         "core.policy_change": ApprovalKind(on_approved=policy.apply_approved, label="Policy change")
+    },
+    policies={
+        "core.evidence_pack_max_days": PolicyDef(
+            366, "Longest date range (days) one audit evidence pack may cover"
+        ),
+        "core.evidence_pack_max_events": PolicyDef(
+            250_000, "Most audit events one evidence pack may contain; larger ranges must be split"
+        ),
     },
     classifications={"session": {}, "audit": {}, "policy": {}, "job": {}, "approval": {}},
 )
