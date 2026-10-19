@@ -9,6 +9,7 @@ from app.foundation import approvals, audit, exports
 from app.foundation.authz import Principal, require
 from app.foundation.db import get_db
 from app.foundation.models import ApprovalRequest, AuditEvent
+from app.foundation.ratelimit import sensitive_rate_limit
 from app.tools.refunds import service
 from app.tools.refunds.models import Refund, Transaction
 
@@ -97,7 +98,7 @@ def create_refund(
     return service.refund_dict(r)
 
 
-@router.post("/transactions/{txn_id}/reveal")
+@router.post("/transactions/{txn_id}/reveal", dependencies=[sensitive_rate_limit])
 def reveal(
     txn_id: int,
     body: RevealBody,
@@ -147,7 +148,7 @@ def stats(p: Principal = Depends(require("refunds.read")), db: Session = Depends
     return service.stats(db)
 
 
-@router.get("/export")
+@router.get("/export", dependencies=[sensitive_rate_limit])
 def export(
     p: Principal = Depends(require("refunds.export")),
     db: Session = Depends(get_db),

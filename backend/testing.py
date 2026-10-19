@@ -59,6 +59,14 @@ def clean_db() -> Iterator[None]:
     yield
 
 
+@pytest.fixture(autouse=True)
+def reset_rate_limits() -> Iterator[None]:
+    from app.foundation.ratelimit import limiter
+
+    limiter.reset()
+    yield
+
+
 @pytest.fixture
 def directory() -> Iterator[MemoryDirectory]:
     d = MemoryDirectory()

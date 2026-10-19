@@ -11,6 +11,7 @@ from app.foundation.authz import Principal, require
 from app.foundation.db import get_db
 from app.foundation.errors import NotFound
 from app.foundation.models import AuditEvent
+from app.foundation.ratelimit import sensitive_rate_limit
 from app.tools.ap import service
 from app.tools.ap.models import BankChange, Invoice, PaymentBatch, PurchaseOrder, Vendor
 
@@ -177,7 +178,7 @@ def vendors(
     return [service.vendor_dict(v) for v in db.execute(select(Vendor).order_by(Vendor.name)).scalars()]
 
 
-@router.post("/vendors/{vid}/reveal")
+@router.post("/vendors/{vid}/reveal", dependencies=[sensitive_rate_limit])
 def reveal(
     vid: int,
     body: RevealBody,

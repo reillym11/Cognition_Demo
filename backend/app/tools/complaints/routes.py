@@ -9,6 +9,7 @@ from app.foundation import audit, exports
 from app.foundation.authz import Principal, require
 from app.foundation.db import get_db, utcnow
 from app.foundation.models import AuditEvent
+from app.foundation.ratelimit import sensitive_rate_limit
 from app.tools.complaints import service
 from app.tools.complaints.models import Complaint
 
@@ -116,7 +117,7 @@ def aging(
     return service.aging(db)
 
 
-@router.get("/register.csv")
+@router.get("/register.csv", dependencies=[sensitive_rate_limit])
 def register(
     p: Principal = Depends(require("complaints.export")),
     db: Session = Depends(get_db),
@@ -231,7 +232,7 @@ def link(
     return service.to_dict(service.link(db, p, cid, body.kind, body.id, body.reason))
 
 
-@router.post("/{cid}/reveal")
+@router.post("/{cid}/reveal", dependencies=[sensitive_rate_limit])
 def reveal(
     cid: int,
     body: RevealBody,

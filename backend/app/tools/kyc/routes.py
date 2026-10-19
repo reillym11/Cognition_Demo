@@ -10,6 +10,7 @@ from app.foundation.authz import Principal, require
 from app.foundation.datacls import keyed_hash
 from app.foundation.db import get_db, utcnow
 from app.foundation.models import ApprovalRequest, AuditEvent
+from app.foundation.ratelimit import sensitive_rate_limit
 from app.tools.kyc import service
 from app.tools.kyc.models import OPEN_STATUSES, KycCase
 
@@ -210,7 +211,7 @@ def escalate(
     return service.to_dict(service.escalate(db, p, case_id, body.reason))
 
 
-@router.post("/cases/{case_id}/reveal")
+@router.post("/cases/{case_id}/reveal", dependencies=[sensitive_rate_limit])
 def reveal(
     case_id: int,
     body: RevealBody,
@@ -266,7 +267,7 @@ def fastlane_run(
     return {"queued": True}
 
 
-@router.get("/export")
+@router.get("/export", dependencies=[sensitive_rate_limit])
 def export(
     p: Principal = Depends(require("kyc.export")),
     db: Session = Depends(get_db),
