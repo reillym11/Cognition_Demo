@@ -21,7 +21,46 @@ export function cents(c: number | null | undefined, currency = "USD"): string {
 }
 
 export function dt(iso: string | null | undefined): string {
-  return iso ? new Date(iso).toLocaleString() : "---";
+  return iso ? new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "---";
+}
+
+export function day(iso: string | null | undefined): string {
+  if (!iso) return "---";
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(`${iso}T00:00:00`) : new Date(iso);
+  return d.toLocaleDateString(undefined, { dateStyle: "medium" });
+}
+
+const UPPER = new Set(["kyc", "ap", "po", "pii", "sla", "api", "ui", "csv", "pdf", "id", "us", "eu", "uk", "qa", "sso"]);
+
+/** Readable label for an enum / snake_case / UPPER_CASE value: "auto_cleared" -> "Auto cleared". */
+export function humanize(v: string | null | undefined): string {
+  if (v === null || v === undefined || v === "") return "---";
+  const words = String(v).replace(/[._-]+/g, " ").trim().toLowerCase().split(/\s+/);
+  return words.map((w, i) => (UPPER.has(w) ? w.toUpperCase() : i === 0 ? w[0].toUpperCase() + w.slice(1) : w)).join(" ");
+}
+
+/** "3 h", "2 d 4 h", "25 min" for a duration in milliseconds. */
+export function duration(ms: number): string {
+  const m = Math.round(Math.abs(ms) / 60000);
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  if (h < 48) return `${h} h`;
+  const d = Math.floor(h / 24);
+  return h % 24 ? `${d} d ${h % 24} h` : `${d} d`;
+}
+
+/** SLA cell: relative due time on top, readable date below. */
+export function DueCell({ iso, breached, done }: { iso: string | null | undefined; breached?: boolean; done?: boolean }) {
+  if (!iso) return <>---</>;
+  const ms = new Date(iso).getTime() - Date.now();
+  const overdue = breached ?? ms < 0;
+  const rel = done ? "Closed" : overdue ? `Overdue ${duration(ms)}` : `Due in ${duration(ms)}`;
+  return (
+    <span className="inline-flex flex-col leading-tight" title={new Date(iso).toLocaleString()}>
+      <span className={!done && overdue ? "font-semibold text-red-700" : ""}>{rel}</span>
+      <span className="text-xs text-slate-500">{dt(iso)}</span>
+    </span>
+  );
 }
 
 const useStyles = makeStyles({
@@ -192,8 +231,8 @@ export function DataTable<T extends { id: number | string }>({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {q.data?.items.map((row) => (
-            <TableRow key={row.id} data-testid={rowTestId} className={onRowClick ? s.rowClick : undefined} onClick={() => onRowClick?.(row)}>
+          {q.data?.items.map((row, i) => (
+            <TableRow key={`${row.id ?? i}`} data-testid={rowTestId} className={onRowClick ? s.rowClick : undefined} onClick={() => onRowClick?.(row)}>
               {columns.map((c) => (
                 <TableCell key={c.key}>{c.render ? c.render(row) : String((row as Record<string, unknown>)[c.key] ?? "---")}</TableCell>
               ))}
@@ -297,7 +336,7 @@ export function ApprovalPanel({ approval, invalidate }: { approval: Approval; in
     <div className="space-y-3" data-testid="approval-panel">
       <div className="flex items-center justify-between gap-2">
         <strong className="text-sm">{approval.title}</strong>
-        <Badge tone={tone}>{approval.status}</Badge>
+        <Badge tone={tone}>{humanize(approval.status)}</Badge>
       </div>
       <Caption1 className={s.muted} block>
         Requested by {approval.requested_by_name} · {dt(approval.requested_at)} · “{approval.request_reason}”
@@ -306,7 +345,7 @@ export function ApprovalPanel({ approval, invalidate }: { approval: Approval; in
       <StageBar stages={approval.stages.map((st, i) => ({ key: String(i), label: `${i + 1}. ${st.name}`, state: stageState(i) }))} current="" testId="approval-stages" />
       {approval.decisions.map((d, i) => (
         <p key={i} className="text-sm">
-          <Badge tone={d.decision === "approve" ? "green" : "red"}>{d.decision}</Badge> {d.decided_by_name}: “{d.reason}”
+          <Badge tone={d.decision === "approve" ? "green" : "red"}>{d.decision === "approve" ? "Approved" : "Rejected"}</Badge> {d.decided_by_name}: “{d.reason}”
         </p>
       ))}
       {approval.status === "open" &&
@@ -335,17 +374,38 @@ export function AuditTimeline({ url }: { url: string }) {
       {q.data?.map((e) => (
         <li key={e.seq} className={s.timelineItem}>
           <div className="flex justify-between gap-2">
-            <span className="font-semibold">{e.action}</span>
+            <span className="font-semibold">{humanize(e.action.split(".").slice(1).join(" ") || e.action)}</span>
             <Caption1 className={s.muted}>{dt(e.occurred_at)}</Caption1>
           </div>
           <div className={s.muted}>
             {e.actor_name}
             {e.reason ? `: “${e.reason}”` : ""}
           </div>
-          {e.after != null && <code className={mergeClasses("block truncate", s.code)}>{JSON.stringify(e.after)}</code>}
+          {e.after != null && <AuditFacts value={e.after} />}
         </li>
       ))}
     </ol>
+  );
+}
+
+function factValue(v: unknown): string {
+  if (v === null || v === undefined || v === "") return "---";
+  if (typeof v === "boolean") return v ? "Yes" : "No";
+  if (Array.isArray(v)) return v.length ? v.map(factValue).join(", ") : "None";
+  if (typeof v === "object") return Object.entries(v as Record<string, unknown>).map(([k, x]) => `${humanize(k)} ${factValue(x)}`).join(", ");
+  if (typeof v === "string" && /^[a-z]+(_[a-z]+)+$/.test(v)) return humanize(v);
+  return String(v);
+}
+
+/** Audit "after" payload as readable label/value pairs instead of raw JSON. */
+function AuditFacts({ value }: { value: unknown }) {
+  if (typeof value !== "object" || value === null) return <div className="text-xs text-slate-600">{factValue(value)}</div>;
+  const entries = Object.entries(value as Record<string, unknown>);
+  if (!entries.length) return null;
+  return (
+    <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-slate-600">
+      {entries.map(([k, v]) => <span key={k}><span className="text-slate-500">{humanize(k)}:</span> {factValue(v)}</span>)}
+    </div>
   );
 }
 
