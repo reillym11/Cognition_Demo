@@ -276,13 +276,10 @@ def access_matrix(app: Any) -> dict[str, Any]:
             for k, v in sorted(reg.permissions.items())
         ],
         "separation_of_duties": [
-            "Approval requester can never approve their own request (foundation/approvals).",
-            "One person decides at most once per approval request, so multi-stage approvals need distinct people.",
-            "KYC: anyone who prepared/touched a case is excluded from its final decision; high-risk needs KYC.SeniorReviewer.",
-            "Refunds: cumulative refunds > policy threshold (default $500) need a Finance approver other than the requester.",
-            "Flags: prod changes need a Platform.Admin approval other than the requester.",
-            "AP: vendor bank-detail changes need out-of-band verification plus a second approver.",
-            "Policy changes (thresholds, windows, fast-lane criteria) need the owning tool's policy approver (e.g. kyc.policy.approve) other than the requester.",
+            "No one approves their own request, and each person decides at most once per request.",
+            "KYC: whoever prepared a case cannot make its final decision; high-risk cases need a senior reviewer.",
+            "Large refunds, production flag changes and policy changes need a second, different person.",
+            "Vendor bank changes need a verification call-back plus a second approver.",
         ],
         "routes": routes,
     }

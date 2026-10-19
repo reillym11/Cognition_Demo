@@ -1,9 +1,10 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { http } from "../api/client";
 import {
-  ApprovalPanel, Badge, Button, Card, DataTable, ErrorBox, Field, Page, ReasonAction, dt, type Approval, Input, SearchBox, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow,
+  ApprovalPanel, Badge, Button, Card, Checkbox, DataTable, ErrorBox, Field, Page, ReasonAction, dt, humanize, type Approval, Input, SearchBox, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow,
 } from "../ui/kit";
+import { actionLabel, formatUnit, fromInput, inputSuffix, policyMeta, resourceLabel, roleLabel, toInput, toolLabel, type PolicyField } from "../ui/labels";
 import { can, useMe } from "./me";
 
 export function InboxPage() {
@@ -19,7 +20,7 @@ export function InboxPage() {
         </div>
       </Card>
       <Card title="Requested by you">
-        <div className="space-y-3">{mine.data?.slice(0, 20).map((a) => <ApprovalPanel key={a.id} approval={a} invalidate={[["inbox"]]} />)}</div>
+        <div className="space-y-3">{mine.data?.length === 0 && <p className="text-sm text-slate-500">You have not requested any approvals.</p>}{mine.data?.slice(0, 20).map((a) => <ApprovalPanel key={a.id} approval={a} invalidate={[["inbox"]]} />)}</div>
       </Card>
     </Page>
   );
@@ -38,7 +39,7 @@ export function AuditPage() {
         <div className="flex flex-wrap gap-2" data-testid="chain-status">
           {verify.data?.map((v) => (
             <Badge key={v.chain} tone={v.ok ? "green" : "red"}>
-              {v.chain}: {v.ok ? `OK (${v.count})` : `BROKEN at #${v.first_bad_seq}`}
+              {toolLabel(v.chain)}: {v.ok ? `Intact (${v.count.toLocaleString()} events)` : `Broken at event ${v.first_bad_seq}`}
             </Badge>
           ))}
         </div>
@@ -63,66 +64,115 @@ export function AuditPage() {
         </Card>
       )}
       <div className="flex flex-wrap gap-2">
-        {(["chain", "actor", "action", "resource_id"] as const).map((k) => (
-          <SearchBox key={k} label={k} placeholder={k} value={filters[k]} onChange={(v) => setFilters({ ...filters, [k]: v })} />
+        {([["chain", "Chain", "kyc"], ["actor", "Actor", "Name"], ["action", "Action", "kyc.decided"], ["resource_id", "Record ID", "123"]] as const).map(([k, label, ph]) => (
+          <SearchBox key={k} label={label} placeholder={ph} value={filters[k]} onChange={(v) => setFilters({ ...filters, [k]: v })} />
         ))}
       </div>
       <DataTable<{ id: number; seq: number; occurred_at: string; actor_name: string; action: string; resource: string; resource_id: string; reason: string | null; chain: string }>
         url="/api/audit/events"
         params={filters}
         columns={[
-          { key: "seq", label: "#" },
+          { key: "seq", label: "Event" },
           { key: "occurred_at", label: "When", render: (r) => dt(r.occurred_at) },
-          { key: "chain", label: "Chain" },
+          { key: "chain", label: "Chain", render: (r) => toolLabel(r.chain) },
           { key: "actor_name", label: "Actor" },
-          { key: "action", label: "Action" },
-          { key: "resource", label: "Resource", render: (r) => `${r.resource}:${r.resource_id}` },
-          { key: "reason", label: "Reason" },
+          { key: "action", label: "Action", render: (r) => actionLabel(r.action) },
+          { key: "resource", label: "Record", render: (r) => resourceLabel(r.resource, r.resource_id) },
+          { key: "reason", label: "Reason", render: (r) => r.reason ?? "---" },
         ]}
       />
     </Page>
   );
 }
 
-type Policy = { key: string; description: string; kind: string; approver: string; value: unknown; version: number; pending_request_id: number | null };
+type Policy = { key: string; description: string; kind: string; approver: string; approver_roles?: string[]; value: unknown; version: number; pending_request_id: number | null };
+
+const fieldValue = (value: unknown, f: PolicyField) => (f.key ? (value as Record<string, unknown>)?.[f.key] : value);
+
+function PolicyChange({ p, onDone }: { p: Policy; onDone: () => void }) {
+  const meta = policyMeta(p.key, p.kind, p.value);
+  const init = () => Object.fromEntries(meta.fields.map((f, i) => [i, f.unit === "bool" ? Boolean(fieldValue(p.value, f)) : toInput(fieldValue(p.value, f), f)]));
+  const [draft, setDraft] = useState<Record<number, string | boolean>>(init);
+  const build = () => {
+    const vals = meta.fields.map((f, i) => (f.unit === "bool" ? Boolean(draft[i]) : fromInput(String(draft[i]), f)));
+    if (!meta.fields[0]?.key) return vals[0];
+    return { ...(p.value as object), ...Object.fromEntries(meta.fields.map((f, i) => [f.key!, vals[i]])) };
+  };
+  return (
+    <ReasonAction
+      label="Request change"
+      extra={
+        <div className="space-y-2">
+          <p className="text-sm font-semibold">{meta.name}</p>
+          {meta.fields.map((f, i) =>
+            f.unit === "bool" ? (
+              <Checkbox key={i} label={f.label} checked={Boolean(draft[i])} onChange={(_, d) => setDraft({ ...draft, [i]: Boolean(d.checked) })} />
+            ) : (
+              <Field key={i} label={`${f.label}${inputSuffix(f) ? ` (${inputSuffix(f)})` : ""}`}>
+                <Input type="number" value={String(draft[i])} onChange={(e) => setDraft({ ...draft, [i]: e.target.value })} />
+              </Field>
+            ),
+          )}
+        </div>
+      }
+      onSubmit={async (reason) => {
+        await http("POST", `/api/policy/${p.key}/change-request`, { value: build(), reason });
+        onDone();
+      }}
+    />
+  );
+}
 
 export function PolicyPage() {
   const me = useMe();
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["policy"], queryFn: () => http<Policy[]>("GET", "/api/policy") });
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
   return (
-    <Page title="Policy (versioned; changes need a second approver)">
+    <Page title="Policies" subtitle="Versioned settings; every change needs a second approver">
       <ErrorBox error={q.error} />
       <div className="overflow-x-auto rounded-lg border bg-white">
-        <Table size="small" className="min-w-full text-sm">
-          <TableHeader className="bg-slate-100 text-left text-xs uppercase text-slate-600">
-            <TableRow><TableHeaderCell className="px-3 py-2">Key</TableHeaderCell><TableHeaderCell className="px-3 py-2">Value</TableHeaderCell><TableHeaderCell className="px-3 py-2">Version</TableHeaderCell><TableHeaderCell className="px-3 py-2">Change</TableHeaderCell></TableRow>
-          </TableHeader>
-          <TableBody>
-            {q.data?.map((p) => (
-              <TableRow key={p.key} className="border-t align-top" data-testid={`policy-${p.key}`}>
-                <TableCell className="px-3 py-2"><code>{p.key}</code><div className="text-xs text-slate-500">{p.description}</div><div className="text-xs text-slate-500">Approver: <code>{p.approver}</code></div></TableCell>
-                <TableCell className="px-3 py-2"><code>{JSON.stringify(p.value)}</code>{p.kind === "cents" && <span className="ml-1 text-xs text-slate-500">(cents)</span>}</TableCell>
-                <TableCell className="px-3 py-2">v{p.version}</TableCell>
-                <TableCell className="px-3 py-2">
-                  {p.pending_request_id ? (
-                    <Badge tone="amber">pending approval #{p.pending_request_id}</Badge>
-                  ) : can(me.data, "core.policy.request") ? (
-                    <ReasonAction
-                      label="Request change"
-                      extra={<Field label="New value (JSON)"><Input  value={drafts[p.key] ?? JSON.stringify(p.value)} onChange={(e) => setDrafts({ ...drafts, [p.key]: e.target.value })} /></Field>}
-                      onSubmit={async (reason) => {
-                        await http("POST", `/api/policy/${p.key}/change-request`, { value: JSON.parse(drafts[p.key] ?? JSON.stringify(p.value)), reason });
-                        qc.invalidateQueries({ queryKey: ["policy"] });
-                      }}
-                    />
-                  ) : null}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        <table className="w-full border-collapse text-sm">
+          <thead className="bg-slate-100 text-left text-xs uppercase text-slate-600">
+            <tr>
+              <th className="w-[110px] px-3 py-2 font-semibold">Tool</th>
+              <th className="px-3 py-2 font-semibold">Policy</th>
+              <th className="w-[330px] px-3 py-2 font-semibold">Current value</th>
+              <th className="w-[150px] px-3 py-2 font-semibold">Approved by</th>
+              <th className="w-[90px] px-3 py-2 font-semibold">Version</th>
+              <th className="w-[170px] px-3 py-2 font-semibold">Change</th>
+            </tr>
+          </thead>
+          <tbody>
+            {q.data?.map((p) => {
+              const meta = policyMeta(p.key, p.kind, p.value);
+              return (
+                <tr key={p.key} className="border-t align-top" data-testid={`policy-${p.key}`}>
+                  <td className="px-3 py-3">{toolLabel(p.key)}</td>
+                  <td className="px-3 py-3"><div className="font-semibold">{meta.name}</div><div className="text-xs text-slate-500">{p.description.replace(/system:kyc-fastlane/g, "the fast lane")}</div></td>
+                  <td className="px-3 py-3">
+                    <dl className="grid grid-cols-[1fr_max-content] gap-x-4 gap-y-1">
+                      {meta.fields.map((f) => (
+                        <Fragment key={f.label}>
+                          <dt className="text-slate-600">{f.label}</dt>
+                          <dd className="whitespace-nowrap text-right font-semibold">{formatUnit(fieldValue(p.value, f), f)}</dd>
+                        </Fragment>
+                      ))}
+                    </dl>
+                  </td>
+                  <td className="px-3 py-3">{p.approver_roles?.length ? p.approver_roles.map(roleLabel).join(", ") : "---"}</td>
+                  <td className="whitespace-nowrap px-3 py-3">{p.version ? `Version ${p.version}` : "Default"}</td>
+                  <td className="px-3 py-3">
+                    {p.pending_request_id ? (
+                      <Badge tone="amber">Pending approval (request {p.pending_request_id})</Badge>
+                    ) : can(me.data, "core.policy.request") ? (
+                      <PolicyChange p={p} onDone={() => qc.invalidateQueries({ queryKey: ["policy"] })} />
+                    ) : "---"}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </Page>
   );
@@ -144,23 +194,24 @@ export function JobsPage() {
       <div className="flex flex-wrap gap-2">
         {Object.entries(q.data?.summary.counts ?? {}).map(([s, n]) => (
           <Button key={s} onClick={() => setStatus(status === s ? "" : s)} variant={status === s ? "primary" : "secondary"}>
-            {s}: {n}
+            {humanize(s)}: {n}
           </Button>
         ))}
       </div>
       <div className="overflow-x-auto rounded-lg border bg-white">
         <Table size="small" className="min-w-full text-sm">
           <TableHeader className="bg-slate-100 text-left text-xs uppercase text-slate-600">
-            <TableRow><TableHeaderCell className="px-3 py-2">#</TableHeaderCell><TableHeaderCell className="px-3 py-2">Kind</TableHeaderCell><TableHeaderCell className="px-3 py-2">Status</TableHeaderCell><TableHeaderCell className="px-3 py-2">Attempts</TableHeaderCell><TableHeaderCell className="px-3 py-2">Last error</TableHeaderCell><TableHeaderCell className="px-3 py-2"></TableHeaderCell></TableRow>
+            <TableRow><TableHeaderCell className="px-3 py-2">Job</TableHeaderCell><TableHeaderCell className="px-3 py-2">Type</TableHeaderCell><TableHeaderCell className="px-3 py-2">Status</TableHeaderCell><TableHeaderCell className="px-3 py-2">Attempts</TableHeaderCell><TableHeaderCell className="px-3 py-2">Created</TableHeaderCell><TableHeaderCell className="px-3 py-2">Last error</TableHeaderCell><TableHeaderCell className="px-3 py-2">Action</TableHeaderCell></TableRow>
           </TableHeader>
           <TableBody>
             {q.data?.items.map((j) => (
               <TableRow key={j.id} className="border-t align-top">
                 <TableCell className="px-3 py-2">{j.id}</TableCell>
-                <TableCell className="px-3 py-2"><code>{j.kind}</code></TableCell>
-                <TableCell className="px-3 py-2"><Badge tone={j.status === "succeeded" ? "green" : j.status === "dead" ? "red" : "amber"}>{j.status}</Badge></TableCell>
-                <TableCell className="px-3 py-2">{j.attempts}/{j.max_attempts}</TableCell>
-                <TableCell className="max-w-md truncate px-3 py-2 text-xs text-slate-600">{j.last_error}</TableCell>
+                <TableCell className="px-3 py-2">{toolLabel(j.kind)}: {humanize(j.kind.split(".").slice(1).join(" ") || j.kind)}</TableCell>
+                <TableCell className="px-3 py-2"><Badge tone={j.status === "succeeded" ? "green" : j.status === "dead" ? "red" : "amber"}>{humanize(j.status)}</Badge></TableCell>
+                <TableCell className="px-3 py-2">{j.attempts} of {j.max_attempts}</TableCell>
+                <TableCell className="px-3 py-2 whitespace-nowrap">{dt(j.created_at)}</TableCell>
+                <TableCell className="max-w-md truncate px-3 py-2 text-xs text-slate-600" title={j.last_error ?? undefined}>{j.last_error ?? "---"}</TableCell>
                 <TableCell className="px-3 py-2">
                   {j.status === "dead" && can(me.data, "core.jobs.admin") && (
                     <ReasonAction label="Retry" onSubmit={async (reason) => { await http("POST", `/api/jobs/${j.id}/retry`, { reason }); qc.invalidateQueries({ queryKey: ["jobs"] }); }} />
@@ -177,31 +228,53 @@ export function JobsPage() {
 
 type Matrix = { roles: Record<string, string[]>; permissions: { permission: string; description: string; routes: string[] }[]; separation_of_duties: string[] };
 
+const ROLE_GROUP: Record<string, string> = {
+  KYC: "KYC", Compliance: "Compliance", Support: "Support", Complaints: "Complaints", Finance: "Finance", AP: "AP", Eng: "Engineering", Platform: "Platform", Audit: "Audit",
+};
+const GROUP_ORDER = ["KYC", "Compliance", "Support", "Finance", "Complaints", "AP", "Engineering", "Platform", "Audit"];
+const TOOL_ORDER = ["kyc", "refunds", "flags", "complaints", "ap", "core"];
+
 export function AccessPage() {
   const q = useQuery({ queryKey: ["access"], queryFn: () => http<Matrix>("GET", "/api/access-matrix") });
-  const roles = Object.keys(q.data?.roles ?? {});
+  const group = (r: string) => ROLE_GROUP[r.split(".")[0]] ?? humanize(r.split(".")[0]);
+  const roles = Object.keys(q.data?.roles ?? {}).sort((a, b) => GROUP_ORDER.indexOf(group(a)) - GROUP_ORDER.indexOf(group(b)) || roleLabel(a).localeCompare(roleLabel(b)));
+  const tools = TOOL_ORDER.filter((t) => q.data?.permissions.some((p) => p.permission.startsWith(`${t}.`)));
   return (
-    <Page title="Access matrix (generated from code)">
+    <Page title="Access matrix">
+      <ErrorBox error={q.error} />
       <Card title="Separation of duties">
-        <ul className="list-disc pl-5 text-sm">{q.data?.separation_of_duties.map((s) => <li key={s}>{s}</li>)}</ul>
+        <ul className="list-disc space-y-0.5 pl-5 text-sm">{q.data?.separation_of_duties.map((s) => <li key={s}>{s}</li>)}</ul>
       </Card>
-      <div className="overflow-x-auto rounded-lg border bg-white">
-        <Table size="small" className="text-xs">
-          <TableHeader className="bg-slate-100">
-            <TableRow>
-              <TableHeaderCell className="sticky left-0 bg-slate-100 px-2 py-1 text-left">Permission</TableHeaderCell>
-              {roles.map((r) => <TableHeaderCell key={r} className="px-2 py-1 [writing-mode:vertical-rl]">{r}</TableHeaderCell>)}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {q.data?.permissions.map((p) => (
-              <TableRow key={p.permission} className="border-t">
-                <TableCell className="sticky left-0 bg-white px-2 py-1" title={p.description}><code>{p.permission}</code></TableCell>
-                {roles.map((r) => <TableCell key={r} className="px-2 py-1 text-center">{q.data!.roles[r].includes(p.permission) ? "●" : ""}</TableCell>)}
-              </TableRow>
+      <div className="overflow-x-auto rounded-lg border bg-white" data-testid="access-matrix">
+        <table className="w-full border-collapse text-xs">
+          <thead className="sticky top-0 bg-slate-100 text-slate-700">
+            <tr>
+              <th className="sticky left-0 z-10 min-w-[220px] border-b border-r bg-slate-100 px-3 py-2 text-left font-semibold">Permission</th>
+              {roles.map((r) => (
+                <th key={r} className="w-[62px] min-w-[62px] border-b border-r px-1 py-2 text-center align-bottom font-semibold leading-tight">{roleLabel(r)}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {tools.map((t) => (
+              <Fragment key={t}>
+                <tr className="bg-slate-50">
+                  <td colSpan={roles.length + 1} className="sticky left-0 border-b px-3 py-1.5 text-sm font-semibold text-slate-800">{toolLabel(t)}</td>
+                </tr>
+                {q.data!.permissions.filter((p) => p.permission.startsWith(`${t}.`)).map((p) => (
+                  <tr key={p.permission} className="hover:bg-blue-50">
+                    <td className="sticky left-0 border-b border-r bg-white px-3 py-1.5">{p.description}</td>
+                    {roles.map((r) => (
+                      <td key={r} className="border-b border-r text-center text-sm" aria-label={q.data!.roles[r].includes(p.permission) ? `${roleLabel(r)}: yes` : `${roleLabel(r)}: no`}>
+                        {q.data!.roles[r].includes(p.permission) ? <span className="font-bold text-blue-700">✓</span> : ""}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </Fragment>
             ))}
-          </TableBody>
-        </Table>
+          </tbody>
+        </table>
       </div>
     </Page>
   );

@@ -126,8 +126,9 @@ def seed_defaults(db: Session) -> None:
 
 
 def list_all(db: Session) -> list[dict[str, Any]]:
+    reg = get_registry()
     out = []
-    for key, d in sorted(get_registry().policies.items()):
+    for key, d in sorted(reg.policies.items()):
         pending = approvals.open_for_subject(db, "policy", key)
         out.append(
             {
@@ -135,6 +136,9 @@ def list_all(db: Session) -> list[dict[str, Any]]:
                 "description": d.description,
                 "kind": d.kind,
                 "approver": d.approver,
+                "approver_roles": sorted(
+                    r for r, perms in reg.role_permissions.items() if d.approver in perms
+                ),
                 "value": get(db, key),
                 "version": current_version(db, key),
                 "pending_request_id": pending.id if pending else None,
