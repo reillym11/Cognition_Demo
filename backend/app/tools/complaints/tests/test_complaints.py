@@ -89,7 +89,7 @@ def test_required_fields_and_checklist_block_advance():
         service.advance(db, principal("hana.handler"), cid, "missing checks")
 
 
-def test_regulatory_branch_needs_compliance_and_different_person():
+def test_regulatory_branch_needs_compliance_and_different_person(directory):
     cid = make()
     run_to_resolve(cid, True)
     assert step(cid, "hana.handler", {"resolution": "credited"}) == "compliance_review"
@@ -132,6 +132,33 @@ def test_unreviewed_case_keeps_earlier_fields_editable():
     step(cid, "hana.handler", {"resolution": "credited"})
     with session_scope() as db:
         service.update(db, principal("hana.handler"), cid, {"resolution": "credited + apology"}, {}, "fix")
+
+
+def test_hand_back_skips_investigator_who_lost_work_permission(directory):
+    from app.foundation.adapters.directory import DirectoryEntry
+
+    cid = make()
+    run_to_resolve(cid, True)
+    step(cid, "hana.handler", {"resolution": "credited"})
+    oid = principal("hana.handler").oid
+    directory.entries[oid] = DirectoryEntry(oid, True, ["Audit.Auditor"])
+    assert step(cid, "cora.compliance", {"compliance_notes": "Checked against conduct rules"}) == "respond"
+    with session_scope() as db:
+        assert service.get(db, cid).assigned_to is None
+
+
+def test_stale_assignment_without_work_permission_cannot_progress(login):
+    auditor = principal("aud.auditor")
+    cid = make(assigned_to=auditor.oid, assigned_name=auditor.name)
+    with session_scope() as db, pytest.raises(Forbidden):
+        service.update(db, auditor, cid, {"summary": "x"}, {}, "stale")
+    with session_scope() as db, pytest.raises(Forbidden):
+        service.advance(db, auditor, cid, "stale")
+    c = login("aud.auditor")
+    assert c.patch(f"/api/complaints/{cid}", json={"fields": {"summary": "x"}}).status_code == 403
+    assert c.post(f"/api/complaints/{cid}/advance", json={"reason": "stale"}).status_code == 403
+    with session_scope() as db:
+        assert service.get(db, cid).summary is None
 
 
 def test_compliance_separation_from_investigator():
