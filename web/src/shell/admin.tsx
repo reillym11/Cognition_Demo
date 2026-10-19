@@ -6,6 +6,7 @@ import {
 } from "../ui/kit";
 import { actionLabel, formatUnit, fromInput, inputSuffix, policyMeta, resourceLabel, roleLabel, toInput, toolLabel, type PolicyField } from "../ui/labels";
 import { can, useMe } from "./me";
+import { PERSONAS } from "./personas.gen";
 
 export function InboxPage() {
   const q = useQuery({ queryKey: ["inbox"], queryFn: () => http<Approval[]>("GET", "/api/approvals/inbox") });
@@ -226,6 +227,8 @@ export function JobsPage() {
   );
 }
 
+const OFFERED_ROLES = new Set(PERSONAS.flatMap((p) => p.roles));
+
 type Matrix = { roles: Record<string, string[]>; permissions: { permission: string; description: string; routes: string[] }[]; separation_of_duties: string[] };
 
 const ROLE_GROUP: Record<string, string> = {
@@ -237,7 +240,8 @@ const TOOL_ORDER = ["kyc", "refunds", "flags", "complaints", "ap", "core"];
 export function AccessPage() {
   const q = useQuery({ queryKey: ["access"], queryFn: () => http<Matrix>("GET", "/api/access-matrix") });
   const group = (r: string) => ROLE_GROUP[r.split(".")[0]] ?? humanize(r.split(".")[0]);
-  const roles = Object.keys(q.data?.roles ?? {}).sort((a, b) => GROUP_ORDER.indexOf(group(a)) - GROUP_ORDER.indexOf(group(b)) || roleLabel(a).localeCompare(roleLabel(b)));
+  // Only roles someone can sign in as; test-only roles stay in code but are not shown.
+  const roles = Object.keys(q.data?.roles ?? {}).filter((r) => OFFERED_ROLES.has(r)).sort((a, b) => GROUP_ORDER.indexOf(group(a)) - GROUP_ORDER.indexOf(group(b)) || roleLabel(a).localeCompare(roleLabel(b)));
   const tools = TOOL_ORDER.filter((t) => q.data?.permissions.some((p) => p.permission.startsWith(`${t}.`)));
   return (
     <Page title="Access matrix">
