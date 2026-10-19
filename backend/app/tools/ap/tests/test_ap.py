@@ -98,6 +98,25 @@ def test_po_and_vendor_exceptions(vendor_po):
     assert "po_amount_exceeded" in _issues(ingest(pdf(number="X2", unit=3_000_000)))
 
 
+def test_negative_amounts_are_exceptions_and_never_lower_po(vendor_po):
+    iid = ingest(pdf(number="CR1", unit=-1_000_000, qty=1))
+    assert status(iid) == "exception" and "negative_amount" in _issues(iid)
+    with pytest.raises(Conflict), session_scope() as db:
+        service.submit(db, principal("cleo.clerk"), iid, "credit note")
+    ok = ingest(pdf(number="OK1"))
+    with session_scope() as db, pytest.raises(Invalid):
+        service.verify(db, principal("cleo.clerk"), iid, {"total_cents": -1}, "typo")
+    with session_scope() as db:
+        service.submit(db, principal("cleo.clerk"), ok, "ready to pay")
+        rid = service.get(db, ok).approval_request_id
+    with session_scope() as db:  # amount tampered after submit: approval must not lower invoiced_cents
+        service.get(db, ok).total_cents = -1_000_000
+    with pytest.raises(Conflict), session_scope() as db:
+        approvals.decide(db, principal("abe.approver"), rid, "approve", "matches PO")
+    with session_scope() as db:
+        assert db.execute(select(PurchaseOrder)).scalar_one().invoiced_cents == 0
+
+
 def _issues(iid: int) -> list[str]:
     with session_scope() as db:
         return service.get(db, iid).match["issues"]
