@@ -102,6 +102,38 @@ def test_regulatory_branch_needs_compliance_and_different_person():
         assert service.get(db, cid).assigned_to == principal("hana.handler").oid
 
 
+def test_compliance_review_freezes_reviewed_fields():
+    cid = make()
+    run_to_resolve(cid, True)
+    step(cid, "hana.handler", {"resolution": "credited"})
+    for f in ({"resolution": "self-approved"}, {"root_cause": "customer.not_upheld"}, {"summary": "x"}):
+        with session_scope() as db, pytest.raises(Invalid, match="not editable"):
+            service.update(db, principal("cora.compliance"), cid, f, {}, "reviewer edit")
+    step(cid, "cora.compliance", {"compliance_notes": "Checked against conduct rules"})
+    for f in (
+        {"resolution": "no redress"},
+        {"root_cause": "customer.not_upheld"},
+        {"category": "delay"},
+        {"product": "cards"},
+        {"summary": "x"},
+        {"compliance_notes": "rewritten"},
+    ):
+        with session_scope() as db, pytest.raises(Invalid, match="not editable"):
+            service.update(db, principal("hana.handler"), cid, f, {}, "post-review edit")
+    step(cid, "hana.handler", {"response_text": "letter"}, {"response_sent": True})
+    with session_scope() as db:
+        c = service.get(db, cid)
+        assert c.status == "closed" and c.resolution == "credited" and c.root_cause == "process.manual_error"
+
+
+def test_unreviewed_case_keeps_earlier_fields_editable():
+    cid = make()
+    run_to_resolve(cid, False)
+    step(cid, "hana.handler", {"resolution": "credited"})
+    with session_scope() as db:
+        service.update(db, principal("hana.handler"), cid, {"resolution": "credited + apology"}, {}, "fix")
+
+
 def test_compliance_separation_from_investigator():
     from app.foundation import workflow
 
