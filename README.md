@@ -109,5 +109,3 @@ Each role can do something no other role can.
   it. Production needs write-once storage.
 - **External systems are mocked:** Entra ID, Teams, the payment processor and the AP inbox.
 - **AP extraction is untested on real invoices.** It reads the text layer of synthetic PDFs, with no OCR.
-- **Power Apps stays better** for citizen-developer speed, visual editing by non-engineers, built-in Microsoft 365
-  integration and Microsoft-operated hosting and compliance.
