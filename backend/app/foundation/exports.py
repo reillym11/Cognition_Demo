@@ -39,7 +39,7 @@ def csv_export(
         if n > MAX_ROWS:
             raise Invalid(f"export exceeds {MAX_ROWS} rows; narrow the filters")
         masked = mask_record(resource, r)
-        w.writerow({k: _cell(masked.get(k)) for k in columns})
+        w.writerow({k: cell(masked.get(k)) for k in columns})
     audit.record(
         db,
         actor,
@@ -58,8 +58,8 @@ def csv_export(
     )
 
 
-def _cell(v: Any) -> Any:
-    # Neutralize spreadsheet formula injection.
+def cell(v: Any) -> Any:
+    """Neutralize spreadsheet formula injection. Use for every cell of any CSV a person may open."""
     if isinstance(v, str) and v[:1] in ("=", "+", "-", "@", "\t", "\r"):
         return "'" + v
     return v
