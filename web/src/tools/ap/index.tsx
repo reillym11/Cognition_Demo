@@ -4,7 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { http } from "../../api/client";
 import { can, useMe } from "../../shell/me";
 import {
-  ApprovalPanel, AuditTimeline, Badge, Button, Card, DataTable, ErrorBox, Field, KeyValues, MaskedField, Page, ReasonAction, Select, cents, dt, type Approval, Input, Checkbox, SearchBox, RecordTabs, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow,
+  ApprovalPanel, AuditTimeline, Badge, Button, Card, DataTable, ErrorBox, Field, KeyValues, MaskedField, Page, ReasonAction, Select, cents, dt, type Approval, Input, Checkbox, SearchBox, RecordTabs, day, humanize, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow,
 } from "../../ui/kit";
 import type { ToolRoute } from "../registry";
 
@@ -21,53 +21,44 @@ type Invoice = {
 const TONE: Record<string, "slate" | "green" | "red" | "amber" | "blue"> = {
   needs_verification: "amber", exception: "red", duplicate: "slate", matched: "blue", pending_approval: "amber", approved: "green", batched: "green", rejected: "slate",
 };
+const STATUS_LABEL: Record<string, string> = {
+  needs_verification: "Needs verification", exception: "Exception", duplicate: "Duplicate", matched: "Matched", pending_approval: "Pending approval", approved: "Approved", batched: "Batched", rejected: "Rejected",
+};
+const statusLabel = (s: string) => STATUS_LABEL[s] ?? humanize(s);
+const FIELD_LABEL: Record<string, string> = {
+  vendor_name: "Vendor name", invoice_number: "Invoice number", invoice_date: "Invoice date", due_date: "Due date", po_number: "PO number",
+  subtotal_cents: "Subtotal (cents)", tax_cents: "Tax (cents)", total_cents: "Total (cents)", remit_bank_name: "Remit bank name", remit_account: "Remit account", remit_routing: "Remit routing",
+};
 const money = (c: number | null | undefined) => (c == null ? "---" : cents(c));
 const EXTRACT_TO_COL: Record<string, string> = { subtotal: "subtotal_cents", tax: "tax_cents", total: "total_cents" };
 
 function Queue() {
   const nav = useNavigate();
   const me = useMe();
-  const qc = useQueryClient();
   const [status, setStatus] = useState("");
   const [q, setQ] = useState("");
-  const [err, setErr] = useState<unknown>(null);
   const stats = useQuery({ queryKey: ["ap-stats"], queryFn: () => http<{ by_status: { status: string; count: number; total_cents: number }[]; bank_changes_open: number }>("GET", "/api/ap/stats") });
-  const upload = async (f: File) => {
-    const fd = new FormData();
-    fd.append("file", f);
-    const r = await fetch("/api/ap/invoices", { method: "POST", body: fd, credentials: "include", headers: { "X-CSRF-Token": document.cookie.match(/itp_csrf=([^;]+)/)?.[1] ?? "" } });
-    if (!r.ok) { setErr(new Error((await r.json()).detail ?? r.statusText)); return; }
-    setErr(null);
-    nav(`/ap/invoices/${(await r.json()).id}`);
-  };
   return (
     <Page title="AP invoices" actions={
       <div className="flex gap-2">
-        {can(me.data, "ap.upload") && (
-          <>
-            <label className="cursor-pointer rounded px-3 py-1.5 text-sm font-semibold text-white" style={{ background: "var(--colorBrandBackground)" }}>Upload PDF<input type="file" accept="application/pdf" className="sr-only" aria-label="Upload invoice PDF" onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} /></label>
-            <Button onClick={async () => { await http("POST", "/api/ap/inbox/poll"); qc.invalidateQueries(); }}>Poll AP inbox</Button>
-          </>
-        )}
         {can(me.data, "ap.batch") && <Button onClick={() => nav("/ap/batches")}>Payment batches</Button>}
       </div>
     }>
-      <ErrorBox error={err} />
       <div className="flex flex-wrap gap-2 text-sm">
-        {stats.data?.by_status.map((s) => <button key={s.status} onClick={() => setStatus(s.status)}><Badge tone={TONE[s.status]}>{s.status}: {s.count} · {cents(s.total_cents)}</Badge></button>)}
+        {stats.data?.by_status.map((s) => <button key={s.status} onClick={() => setStatus(s.status)}><Badge tone={TONE[s.status]}>{statusLabel(s.status)}: {s.count} · {cents(s.total_cents)}</Badge></button>)}
       </div>
       <div className="flex flex-wrap items-end gap-3">
-        <Select label="Status" value={status} onChange={setStatus} options={[["", "All"], ...Object.keys(TONE).map((k) => [k, k] as [string, string])]} />
+        <Select label="Status" value={status} onChange={setStatus} options={[["", "All"], ...Object.keys(TONE).map((k) => [k, statusLabel(k)] as [string, string])]} />
         <SearchBox label="Search invoices" placeholder="vendor or number" value={q} onChange={(v) => setQ(v)} />
       </div>
       <DataTable<Invoice>
         url="/api/ap/invoices" params={{ status, q }} rowTestId="invoice-row" onRowClick={(r) => nav(`/ap/invoices/${r.id}`)}
         columns={[
-          { key: "id", label: "#" }, { key: "vendor_name", label: "Vendor" }, { key: "invoice_number", label: "Invoice" },
+          { key: "id", label: "ID" }, { key: "vendor_name", label: "Vendor", render: (r) => r.vendor_name ?? "---" }, { key: "invoice_number", label: "Invoice", render: (r) => r.invoice_number ?? "---" },
           { key: "total_cents", label: "Total", render: (r) => money(r.total_cents) },
-          { key: "status", label: "Status", render: (r) => <Badge tone={TONE[r.status]}>{r.status}</Badge> },
-          { key: "issues", label: "Issues", render: (r) => (r.match.issues ?? []).join(", ") || "---" },
-          { key: "source", label: "Source" }, { key: "created_at", label: "Received", render: (r) => dt(r.created_at) },
+          { key: "status", label: "Status", render: (r) => <Badge tone={TONE[r.status]}>{statusLabel(r.status)}</Badge> },
+          { key: "issues", label: "Issues", render: (r) => (r.match.issues ?? []).map(humanize).join(", ") || "---" },
+          { key: "source", label: "Source", render: (r) => humanize(r.source) }, { key: "created_at", label: "Received", render: (r) => dt(r.created_at) },
         ]}
       />
     </Page>
@@ -83,11 +74,11 @@ function VerifyForm({ inv, onDone }: { inv: Invoice; onDone: () => void }) {
   const [vals, setVals] = useState<Record<string, string>>({});
   return (
     <Card title="Verify extracted fields">
-      <p className="mb-2 text-xs text-slate-500">Engine {inv.extraction.engine}. Fields under 90% confidence are highlighted; bank fields are masked, re-type them only if the PDF differs.</p>
+      <p className="mb-2 text-xs text-slate-500">Fields under 90% confidence are highlighted; bank fields are masked, re-type them only if the PDF differs.</p>
       {inv.extraction.warnings.map((w) => <p key={w} className="text-sm text-amber-800">⚠ {w}</p>)}
       <div className="grid grid-cols-2 gap-2">
         {editable.map((k) => (
-          <Field key={k} label={`${k} (${Math.round(conf(k) * 100)}%)`}>
+          <Field key={k} label={`${FIELD_LABEL[k] ?? humanize(k)} · ${Math.round(conf(k) * 100)}% confidence`}>
             <Input aria-label={k} className={conf(k) < 0.9 ? "ring-2 ring-amber-400" : undefined} placeholder={String((inv as unknown as Record<string, unknown>)[k] ?? "")}
               value={vals[k] ?? ""} onChange={(e) => setVals({ ...vals, [k]: e.target.value })} />
           </Field>
@@ -114,22 +105,22 @@ function Detail() {
   const workable = ["needs_verification", "exception"].includes(inv.status);
   const bankDiff = (inv.match.issues ?? []).includes("bank_details_differ");
   return (
-    <Page subtitle="Vendor invoice" title={`Invoice ${inv.invoice_number ?? `#${inv.id}`}`} status={<Badge tone={TONE[inv.status]}>{inv.status}</Badge>}>
+    <Page subtitle="Vendor invoice" title={`Invoice ${inv.invoice_number ?? `#${inv.id}`}`} status={<Badge tone={TONE[inv.status]}>{statusLabel(inv.status)}</Badge>}>
       <RecordTabs tabs={[{ key: "summary", label: "Summary", content: <>
       <div className="grid gap-4 lg:grid-cols-2">
         <Card title="Document"><iframe title="Invoice PDF" src={`/api/ap/invoices/${inv.id}/file`} className="h-[520px] w-full rounded border" /></Card>
         <div className="space-y-4">
           <Card title="Extracted">
             <KeyValues rows={[
-              ["Vendor", inv.vendor_name ?? "---"], ["Invoice", inv.invoice_number ?? "---"], ["Dates", `${inv.invoice_date ?? "?"} → due ${inv.due_date ?? "?"}`],
+              ["Vendor", inv.vendor_name ?? "---"], ["Invoice", inv.invoice_number ?? "---"], ["Invoice date", day(inv.invoice_date)], ["Due date", day(inv.due_date)],
               ["PO", inv.po ? `${inv.po.po_number} (remaining ${money(inv.po.amount_cents - inv.po.invoiced_cents)})` : inv.po_number ?? "---"],
-              ["Subtotal / tax / total", `${money(inv.subtotal_cents)} / ${money(inv.tax_cents)} / ${money(inv.total_cents)}`],
-              ["Remit to", <>{inv.remit_bank_name} · acct {inv.remit_account} · routing {inv.remit_routing}</>],
-              ["On file", inv.vendor ? <>acct <MaskedField field="bank_account" value={inv.vendor.bank_account} revealUrl={`/api/ap/vendors/${inv.vendor.id}/reveal`} canReveal={false} /></> : "unknown vendor"],
-              ["Issues", (inv.match.issues ?? []).map((i) => <Badge key={i} tone="red">{i}</Badge>)],
-              ["Duplicate of", inv.duplicate_of ? <a className="text-blue-700 underline" href={`/ap/invoices/${inv.duplicate_of}`}>#{inv.duplicate_of}</a> : "---"],
+              ["Subtotal", money(inv.subtotal_cents)], ["Tax", money(inv.tax_cents)], ["Total", <strong>{money(inv.total_cents)}</strong>],
+              ["Remit to", inv.remit_bank_name ? <>{inv.remit_bank_name} · account {inv.remit_account} · routing {inv.remit_routing}</> : "---"],
+              ["Bank on file", inv.vendor ? <>Account <MaskedField field="bank_account" value={inv.vendor.bank_account} revealUrl={`/api/ap/vendors/${inv.vendor.id}/reveal`} canReveal={false} /></> : "Unknown vendor"],
+              ["Issues", (inv.match.issues ?? []).length ? <span className="flex flex-wrap gap-1">{(inv.match.issues ?? []).map((i) => <Badge key={i} tone="red">{humanize(i)}</Badge>)}</span> : "None"],
+              ["Duplicate of", inv.duplicate_of ? <a className="text-blue-700 underline" href={`/ap/invoices/${inv.duplicate_of}`}>Invoice {inv.duplicate_of}</a> : "---"],
             ]} />
-            <Table size="small" className="mt-2 min-w-full text-xs"><TableBody>{inv.line_items.map((l, i) => <TableRow key={i} className="border-t"><TableCell>{l.description}</TableCell><TableCell>{l.quantity}</TableCell><TableCell>{money(l.unit_cents)}</TableCell><TableCell>{money(l.amount_cents)}</TableCell></TableRow>)}</TableBody></Table>
+            <Table size="small" className="mt-2 min-w-full text-xs"><TableHeader className="text-left text-xs uppercase text-slate-500"><TableRow><TableHeaderCell>Line item</TableHeaderCell><TableHeaderCell>Qty</TableHeaderCell><TableHeaderCell>Unit price</TableHeaderCell><TableHeaderCell>Amount</TableHeaderCell></TableRow></TableHeader><TableBody>{inv.line_items.map((l, i) => <TableRow key={i} className="border-t"><TableCell>{l.description}</TableCell><TableCell>{l.quantity}</TableCell><TableCell>{money(l.unit_cents)}</TableCell><TableCell>{money(l.amount_cents)}</TableCell></TableRow>)}</TableBody></Table>
           </Card>
           <div className="flex flex-wrap gap-2">
             {inv.can?.verify && inv.status === "matched" && <ReasonAction label="Submit for approval" variant="primary" testId="submit" onSubmit={async (reason) => { await http("POST", `/api/ap/invoices/${inv.id}/submit`, { reason }); refresh(); }} />}
@@ -159,8 +150,8 @@ function BankChanges() {
     <Page title="Vendor bank changes">
       <p className="text-sm text-slate-600">Every change is verified by a call-back to the phone number already on file (by someone other than the requester) and approved by a financial controller (a third person).</p>
       <ErrorBox error={q.error} />
-      <Table size="small" className="min-w-full text-sm"><TableHeader className="text-left text-xs uppercase text-slate-500"><TableRow><TableHeaderCell>#</TableHeaderCell><TableHeaderCell>Vendor</TableHeaderCell><TableHeaderCell>Status</TableHeaderCell><TableHeaderCell>Requested by</TableHeaderCell><TableHeaderCell>When</TableHeaderCell></TableRow></TableHeader>
-        <TableBody>{q.data?.map((b) => <TableRow key={b.id} className="cursor-pointer border-t hover:bg-slate-50" onClick={() => nav(`/ap/bank-changes/${b.id}`)}><TableCell className="py-1">{b.id}</TableCell><TableCell>{b.vendor_name}</TableCell><TableCell><Badge tone={b.status === "applied" ? "green" : b.status === "rejected" ? "slate" : "amber"}>{b.status}</Badge></TableCell><TableCell>{b.requested_by_name}</TableCell><TableCell>{dt(b.created_at)}</TableCell></TableRow>)}</TableBody>
+      <Table size="small" className="min-w-full text-sm"><TableHeader className="text-left text-xs uppercase text-slate-500"><TableRow><TableHeaderCell>ID</TableHeaderCell><TableHeaderCell>Vendor</TableHeaderCell><TableHeaderCell>Status</TableHeaderCell><TableHeaderCell>Requested by</TableHeaderCell><TableHeaderCell>When</TableHeaderCell></TableRow></TableHeader>
+        <TableBody>{q.data?.length === 0 && <TableRow><TableCell colSpan={5} className="py-3 text-slate-500">No bank-change requests.</TableCell></TableRow>}{q.data?.map((b) => <TableRow key={b.id} className="cursor-pointer border-t hover:bg-slate-50" onClick={() => nav(`/ap/bank-changes/${b.id}`)}><TableCell className="py-1">{b.id}</TableCell><TableCell>{b.vendor_name}</TableCell><TableCell><Badge tone={b.status === "applied" ? "green" : b.status === "rejected" ? "slate" : "amber"}>{humanize(b.status)}</Badge></TableCell><TableCell>{b.requested_by_name}</TableCell><TableCell>{dt(b.created_at)}</TableCell></TableRow>)}</TableBody>
       </Table>
     </Page>
   );
@@ -175,9 +166,9 @@ function BankChangeDetail() {
   if (!q.data) return <ErrorBox error={q.error} />;
   const b = q.data;
   return (
-    <Page subtitle="Vendor bank change" title={`Bank change #${b.id} · ${b.vendor_name}`} status={<Badge tone="amber">{b.status}</Badge>}>
+    <Page subtitle="Vendor bank change" title={`Bank change ${b.id} · ${b.vendor_name}`} status={<Badge tone={b.status === "applied" ? "green" : b.status === "rejected" ? "slate" : "amber"}>{humanize(b.status)}</Badge>}>
       <Card title="Change">
-        <KeyValues rows={[["Current", `${b.current?.bank_name} · acct ${b.current?.bank_account}`], ["Requested", `${b.new_bank_name} · acct ${b.new_account} · routing ${b.new_routing}`],
+        <KeyValues rows={[["Current", b.current ? `${b.current.bank_name} · account ${b.current.bank_account}` : "---"], ["Requested", `${b.new_bank_name} · account ${b.new_account} · routing ${b.new_routing}`],
           ["Requested by", `${b.requested_by_name}: ${b.request_reason}`], ["Phone on file", b.phone_on_file], ["Call-back notes", b.callback_notes ?? "---"]]} />
       </Card>
       {b.can?.callback && (
@@ -198,8 +189,8 @@ function Batches() {
   return (
     <Page title="Payment batches" actions={<ReasonAction label="Create batch from approved invoices" variant="primary" onSubmit={async (reason) => { await http("POST", "/api/ap/batches", { reason }); qc.invalidateQueries(); }} />}>
       <ErrorBox error={q.error} />
-      <Table size="small" className="min-w-full text-sm"><TableHeader className="text-left text-xs uppercase text-slate-500"><TableRow><TableHeaderCell>#</TableHeaderCell><TableHeaderCell>Invoices</TableHeaderCell><TableHeaderCell>Total</TableHeaderCell><TableHeaderCell>SHA-256</TableHeaderCell><TableHeaderCell>By</TableHeaderCell><TableHeaderCell>When</TableHeaderCell><TableHeaderCell /></TableRow></TableHeader>
-        <TableBody>{q.data?.map((b) => (
+      <Table size="small" className="min-w-full text-sm"><TableHeader className="text-left text-xs uppercase text-slate-500"><TableRow><TableHeaderCell>Batch</TableHeaderCell><TableHeaderCell>Invoices</TableHeaderCell><TableHeaderCell>Total</TableHeaderCell><TableHeaderCell>SHA-256</TableHeaderCell><TableHeaderCell>By</TableHeaderCell><TableHeaderCell>When</TableHeaderCell><TableHeaderCell>File</TableHeaderCell></TableRow></TableHeader>
+        <TableBody>{q.data?.length === 0 && <TableRow><TableCell colSpan={7} className="py-3 text-slate-500">No payment batches yet.</TableCell></TableRow>}{q.data?.map((b) => (
           <TableRow key={b.id} className="border-t"><TableCell className="py-1">{b.id}</TableCell><TableCell>{b.count}</TableCell><TableCell>{cents(b.total_cents)}</TableCell><TableCell className="font-mono text-xs">{b.sha256.slice(0, 16)}…</TableCell><TableCell>{b.created_by}</TableCell><TableCell>{dt(b.created_at)}</TableCell>
             <TableCell><ReasonAction label="Download" onSubmit={async (reason) => { window.location.href = `/api/ap/batches/${b.id}/file?reason=${encodeURIComponent(reason)}`; }} /></TableCell></TableRow>
         ))}</TableBody>
