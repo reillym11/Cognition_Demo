@@ -57,9 +57,8 @@ the real OIDC code + PKCE round trip against the mock Entra ID; the mock's page 
 | KYC Senior Reviewer | KYC.SeniorReviewer | Make the second decision (four eyes), high-risk cases, QA sample |
 | Compliance Admin | Compliance.Admin | KYC across regions, complaint compliance review, audit, policies |
 | Support Agent | Support.Agent | Request a refund over $500 for any region |
-| Support Contractor (EU) | Support.Contractor | Sees only EU merchants' refund transactions, PII masked |
-| Finance Approver | Finance.Approver | Approve the refund (must be a different person) |
-| Financial Controller | Finance.Controller + AP.Approver | Tier 2 invoice approval, final bank-change approval, refund reconciliation |
+| Outsourced Support (EU) | Support.Contractor | Sees only EU merchants' refund transactions, PII masked |
+| Financial Controller | Finance.Controller + AP.Approver | Approve refunds (a different person from the requester), tier 2 invoices, final bank-change approval, reconciliation |
 | AP Clerk | AP.Clerk | Upload or poll an invoice, verify fields, request a bank-detail change |
 | AP Approver | AP.Approver | Tier 1 invoice approval, bank-change call-back |
 | Complaints Handler | Complaints.Handler | Work a complaint through the stages |
@@ -67,8 +66,8 @@ the real OIDC code + PKCE round trip against the mock Entra ID; the mock's page 
 | Platform Admin | Platform.Admin | Approve the production flag change, jobs, access matrix |
 | Auditor | Audit.Auditor | Read-only everywhere, audit explorer, evidence export |
 
-`infra/oidc/personas.json` also holds four test-only accounts (`hidden`), which are not offered at sign-in: a second
-KYC analyst, a second complaints handler, a product manager, and a user with a groups overage (more than 200 groups
+`infra/oidc/personas.json` also holds five test-only accounts (`hidden`), which are not offered at sign-in: a second
+KYC analyst, a second complaints handler, a product manager, a refund-only finance approver, and a user with a groups overage (more than 200 groups
 and no app roles, which is refused). After editing personas run `python scripts/gen_login_page.py`.
 
 To use the app from a single public URL (for example a preview link), start it with

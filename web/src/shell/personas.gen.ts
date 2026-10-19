@@ -26,15 +26,9 @@ export const PERSONAS: { username: string; name: string; group: string; descript
   },
   {
     "username": "support.contractor",
-    "name": "Support Contractor (EU)",
+    "name": "Outsourced Support (EU)",
     "group": "Refunds",
-    "description": "Refunds for EU merchants only"
-  },
-  {
-    "username": "finance.approver",
-    "name": "Finance Approver",
-    "group": "Refunds",
-    "description": "Approves refunds"
+    "description": "Outsourced support: refunds for EU merchants only"
   },
   {
     "username": "flags.engineer",
@@ -75,7 +69,7 @@ export const PERSONAS: { username: string; name: string; group: string; descript
   {
     "username": "finance.controller",
     "name": "Financial Controller",
-    "group": "AP invoices",
-    "description": "Tier 2 approval, final bank-change approval, refund reconciliation"
+    "group": "Finance",
+    "description": "Approves refunds, tier 2 invoices and final bank changes; reconciliation"
   }
 ];

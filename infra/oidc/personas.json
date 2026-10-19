@@ -60,14 +60,14 @@
     },
     {
       "username": "support.contractor",
-      "name": "Support Contractor (EU)",
+      "name": "Outsourced Support (EU)",
       "oid": "00000000-0000-4000-8000-000000000006",
       "roles": [
         "Support.Contractor"
       ],
       "region": "EU",
       "group": "Refunds",
-      "persona": "Refunds for EU merchants only"
+      "persona": "Outsourced support: refunds for EU merchants only"
     },
     {
       "username": "finance.approver",
@@ -78,7 +78,8 @@
       ],
       "region": "US",
       "group": "Refunds",
-      "persona": "Approves refunds"
+      "persona": "Refund approver only (automated tests only)",
+      "hidden": true
     },
     {
       "username": "flags.engineer",
@@ -179,8 +180,8 @@
         "Finance.Controller"
       ],
       "region": "US",
-      "group": "AP invoices",
-      "persona": "Tier 2 approval, final bank-change approval, refund reconciliation"
+      "group": "Finance",
+      "persona": "Approves refunds, tier 2 invoices and final bank changes; reconciliation"
     },
     {
       "username": "overage.user",

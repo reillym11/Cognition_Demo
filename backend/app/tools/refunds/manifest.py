@@ -40,6 +40,7 @@ MANIFEST = ToolManifest(
         "Finance.Controller": [
             "refunds.read",
             "refunds.all_regions",
+            "refunds.approve",
             "refunds.export",
             "refunds.reconcile",
             "refunds.policy.approve",
