@@ -1,109 +1,113 @@
-# Applications by Devin: internal tools platform prototype
+# Applications by Devin
 
-A working prototype that tests whether a regulated fintech can replace (or complement) Power Apps internal tools with
-tools built by Devin on one shared platform. It is **not** a UI clone: the point is the controls underneath — one
-login, server-side permissions with row and field scopes, a tamper-evident audit log, a shared maker-checker approval
-primitive, policy-as-data, background jobs — and how cheaply each additional tool can be added on top.
+A working prototype that tests whether a fintech can replace or complement its Power Apps internal tools with tools
+built by Devin. Five tools run on one shared platform: login, server-side permissions, audit log, approvals,
+policies and background jobs are written once and reused by every tool.
 
-Everything runs on localhost with **synthetic data only** (Faker, fixed seeds, `example.com`, fake bank numbers).
+Everything runs locally with **synthetic data only**.
 
-## What's in it
+## Tech stack
+
+| Layer | Technology |
+|---|---|
+| Backend | Python 3.12, FastAPI, SQLAlchemy 2, Alembic, uv |
+| Database | PostgreSQL 16 (also the job queue) |
+| Frontend | React 18, TypeScript, Vite, TanStack Query, Microsoft Fluent UI v9, pnpm |
+| Identity | OIDC code flow + PKCE against a mock Microsoft Entra ID (`mock-oauth2-server`) |
+| Tests | pytest (173 backend tests, real Postgres), Playwright browser tests |
+| Tooling | Docker Compose, GitHub Actions CI, GitHub Codespaces dev container |
+
+## The tools
 
 | Tool | What it shows |
 |---|---|
-| **KYC review** (~25k cases) | Server-side filter/sort/paging, claim races, SLA timers, four-eyes decisions (every case needs two people), senior review for high risk, audited auto-clear fast lane with versioned criteria + daily 2% QA sample, region row isolation, masked PII with audited reveal, 5-year retention class |
-| **Refunds** (~100k transactions) | Integer cents, cumulative reservation under row lock (pending refunds count), threshold approval by a different person, velocity flag, idempotent execution, unknown-outcome reconciliation, processor fault injection, mock Teams notice |
-| **Feature flags** (thin) | dev/staging/prod, % rollout + simple targeting, deterministic bucketing, explicit missing defaults, prod changes need a second person, full diff history, stale-flag report job |
-| **Complaints** (~8k) | Reusable stage engine: per-stage required fields, checklists, SLAs, one-level regulatory branch to compliance review with separation of duties, root-cause taxonomy, KYC/refund links, aging summary on the home page, register CSV |
-| **AP invoices** | PDF intake (upload + mock inbox) with validation/active-content rejection, text-layer field extraction with confidence, human verification, duplicate + vendor/PO match, tiered sequential approvals, call-back-verified bank changes (3 different people), audited SHA-256 payment batches |
+| **KYC review** (~25k cases) | Review queue with SLA timers, four-eyes decisions, senior review for high risk, an audited auto-clear lane with a QA sample, region-limited access, masked PII with audited reveal |
+| **Refunds** (~100k transactions) | Money in integer cents, a second person above the approval threshold, velocity flags, safe retries and reconciliation when the processor's answer is unknown |
+| **Feature flags** | Dev, staging and production environments, percentage rollout and targeting, production changes need a second person, full change history |
+| **Complaints** (~8k) | Stage-by-stage case flow with required fields and SLAs, a compliance review branch, aging summary on the home page |
+| **AP invoices** | PDF validation and field extraction, human verification, duplicate and PO matching, tiered approvals, bank-detail changes that need three different people |
 
-Shared foundation (`backend/app/foundation/`): `auth` (OIDC + PKCE, opaque server sessions, CSRF, idle/absolute
-timeouts), `authz` (deny-by-default; startup fails if a route lacks a permission), `datacls` (one register of sensitive
-fields driving masking, log redaction, audit fingerprints, exports), `audit` (hash-chained, same-transaction, DB grants
-block update/delete), `approvals`, `policy`, `jobs` (Postgres `SKIP LOCKED` queue), `notify` (outbox), `workflow`,
-`files`, `extraction`, `exports`. Admin pages: audit explorer + chain verify, policies, jobs/dead letters, access matrix.
+The shared platform lives in `backend/app/foundation/`. Each tool is a package in `backend/app/tools/<tool>/` with a
+manifest that declares its permissions, roles, navigation, policies and sensitive fields.
+
+Platform rules that every tool inherits:
+- Every API route must declare a permission or the server refuses to start. The UI never decides access.
+- Every change and every sensitive read is written to a hash-chained audit log in the same transaction.
+- Anything that needs a second person goes through one approvals module: no self-approval, reasons required.
+- Thresholds and criteria are versioned policies, and changing one needs its own approval.
 
 ## Run it
 
 ### In GitHub Codespaces (nothing to install)
 
-1. On the repo page click **Code > Codespaces > Create codespace on main** (4-core machine). The first start
-   installs everything (a few minutes).
-2. In the Codespace terminal run `make demo-reset && make dev` (Docker starts with the Codespace; give it a few seconds after the first start).
-3. Open the **Ports** tab and click the globe next to port **5173**, pick a role in **Sign in as** and click **Sign in**.
+1. On the repo page click **Code > Codespaces > Create codespace on main** (4-core machine). The first start takes a
+   few minutes.
+2. In the terminal run `make demo-reset && make dev`.
+3. In the **Ports** tab open port **5173**, pick a role in **Sign in as** and click **Sign in**.
 
-Sign-in stays on the forwarded 5173 address (the Makefile sets `ITP_PUBLIC_BASE_URL` and `ITP_OIDC_BROWSER_ISSUER`
-from the Codespace name). Stop the Codespace when you are done to save your free hours.
+Stop the Codespace when you are done.
 
 ### On your own machine
 
-Prerequisites: Docker, [uv](https://docs.astral.sh/uv/), Node 22 + pnpm 9.
+Requires Docker, [uv](https://docs.astral.sh/uv/), Node 22 and pnpm 9.
 
 ```bash
-make setup        # uv sync, pnpm install, playwright chromium, git hooks
-make up           # Postgres :54320, mock Entra OIDC :8081 (docker compose)
-make demo-reset   # migrate + seed all tools
+make setup        # install Python and web dependencies
+make demo-reset   # start Postgres, create and seed the database
 make dev          # API :8000, worker, mocks :8090, web :5173
-make e2e          # browser tests (10) against the running stack, in a second shell
 ```
 
-Open http://localhost:5173, pick a role in the **Sign in as** dropdown and click **Sign in**. The app still runs
-the real OIDC code + PKCE round trip against the mock Entra ID; the mock's page completes itself for the chosen role
-(standard `login_hint`), so there is no second page. Each role has access no other role has:
+Open http://localhost:5173, pick a role and sign in.
 
-| Role (dropdown) | Entra app role | Try |
-|---|---|---|
-| KYC Analyst | KYC.Analyst (US) | Claim and recommend a KYC case in the US region |
-| KYC Senior Reviewer | KYC.SeniorReviewer | Make the second decision (four eyes), high-risk cases, QA sample |
-| Compliance Admin | Compliance.Admin | KYC across regions, complaint compliance review, audit, policies |
-| Support Agent | Support.Agent | Request a refund over $500 for any region |
-| Outsourced Support (EU) | Support.Contractor | Sees only EU merchants' refund transactions, PII masked |
-| Financial Controller | Finance.Controller + AP.Approver | Approve refunds (a different person from the requester), tier 2 invoices, final bank-change approval, reconciliation |
-| AP Clerk | AP.Clerk | Upload or poll an invoice, verify fields, request a bank-detail change |
-| AP Approver | AP.Approver | Tier 1 invoice approval, bank-change call-back |
-| Complaints Handler | Complaints.Handler | Work a complaint through the stages |
-| Engineer | Eng.Engineer | Create a flag, request a production change |
-| Platform Admin | Platform.Admin | Approve the production flag change, jobs, access matrix |
-| Auditor | Audit.Auditor | Read-only everywhere, audit explorer, evidence export |
+### Roles
 
-`infra/oidc/personas.json` also holds five test-only accounts (`hidden`), which are not offered at sign-in: a second
-KYC analyst, a second complaints handler, a product manager, a refund-only finance approver, and a user with a groups overage (more than 200 groups
-and no app roles, which is refused). After editing personas run `python scripts/gen_login_page.py`.
+Each role can do something no other role can.
 
-To use the app from a single public URL (for example a preview link), start it with
-`ITP_PUBLIC_BASE_URL=<url> ITP_OIDC_BROWSER_ISSUER=<url>/entra make dev`; the web server proxies `/entra` to the mock
-Entra ID so the whole sign-in stays on that one address.
+| Role | Try |
+|---|---|
+| KYC Analyst | Claim and recommend a KYC case in the US region |
+| KYC Senior Reviewer | Make the second decision on a case, handle high-risk cases, review the QA sample |
+| Compliance Admin | See KYC across regions, sign off complaints, approve policy changes |
+| Support Agent | Request a refund over $500 |
+| Outsourced Support (EU) | See only EU merchants' refunds, with customer details masked |
+| Financial Controller | Approve refunds and tier 2 invoices, give final approval on bank-detail changes |
+| AP Clerk | Verify extracted invoice fields, request a bank-detail change |
+| AP Approver | Approve tier 1 invoices, confirm bank changes by call-back |
+| Complaints Handler | Work a complaint through its stages |
+| Engineer | Create a flag and request a production change |
+| Platform Admin | Approve production flag changes, manage background jobs |
+| Auditor | Read everything, verify the audit log, export evidence |
 
-Useful commands: `make check` (everything CI runs), `make test`, `make audit-verify`, `make audit-tamper-demo`
-(edits one audit row as superuser and shows verification fail), `make access-matrix`, `make new-tool name=<x>`.
+### Useful commands
+
+| Command | Does |
+|---|---|
+| `make check` | Everything CI runs: lint, type checks, backend tests, API client drift, no-dash check |
+| `make e2e` | Browser tests against a running `make dev` |
+| `make audit-verify` | Verify every audit hash chain |
+| `make audit-tamper-demo` | Edit one audit row as a superuser and show verification fail |
+| `make new-tool name=<x>` | Scaffold a new tool package |
 
 ## How it was built with Devin
 
-- Direct-to-`main` commits (no PRs, by choice). Safety net: pre-push `make check`, CI on every push, self-review
-  notes in `docs/evidence/self-review/`, a protected-path tick-off issue, and Devin Code Scans on `main`.
-- `AGENTS.md` / `REVIEW.md` give every session the conventions and review checklist.
-- Repo skills in `.agents/skills/` (`new-internal-tool`, `security-review`, `demo-data`) and the
-  `!new-internal-tool` playbook (`docs/playbooks/new-internal-tool.md`) make tool N+1 repeatable.
-- Non-engineer change requests: the **Internal tool change request** issue form (label `change-request`) is the
-  stand-in for Teams; a Devin Automation picks those issues up. Teams was not installable in this tenant.
-- Measurements: `docs/evidence/` — engineering measurement report: [`docs/evidence/measurement.md`](docs/evidence/measurement.md).
-- UI: Microsoft Fluent UI v9 (`@fluentui/react-components`, MIT), laid out like Power Apps model-driven apps: grouped
-  sitemap navigation, command bar, list views with filters, record pages with Summary / Audit history tabs, and a
-  business-process-flow style stage bar for complaints. It matches the look, not the Power Apps maker experience.
+- Commits go straight to `main`. The safety net is `make check` before every push, CI on every push, self-review
+  notes for protected code (`docs/evidence/self-review/`) and Devin code scans.
+- `AGENTS.md` and `REVIEW.md` give every Devin session the same rules and review checklist.
+- Repo skills (`.agents/skills/`) and the `!new_internal_tool` playbook let a fresh session build the next tool.
+- Change requests from non-engineers use a GitHub issue form (label `change-request`) that a Devin Automation picks
+  up. This stands in for Teams, which could not be installed in this tenant.
+- The UI uses Microsoft Fluent UI v9 in a Power Apps model-driven layout: grouped navigation, command bar, list views,
+  record pages with Summary and Audit history tabs, and a stage bar for complaints.
+- Measurements: [`docs/evidence/measurement.md`](docs/evidence/measurement.md). Power Apps comparison with sources:
+  [`docs/power-apps-comparison.md`](docs/power-apps-comparison.md).
 
 ## Honest limits
 
-- **Localhost only.** Production needs managed Postgres with PITR, object storage with retention lock (WORM) for files
-  and audit export, a real Entra app registration, secrets manager, TLS, monitoring/alerting, backups and DR tests.
-  None of that is claimed here.
-- **Audit is tamper-evident, not tamper-proof**: a DB superuser can rewrite rows; the hash chain only detects it.
-- **Known gap (code scan, low):** the AP inbox poll takes one message at a time but keeps going until the inbox is
-  empty, inside one transaction, so a flood of inbox messages keeps the single worker busy and holds the AP audit lock.
-  Fix: cap messages per run and commit per message. Left open by choice for the prototype.
-- **Teams is mocked** (local webhook receiver). **Processor and AP inbox are mocks.**
-- **AP extraction** parses the text layer of synthetic PDFs. No OCR, no accuracy claim vs AI Builder on real invoices.
-- **Where Power Apps stays better**: citizen-developer speed for simple forms/lists
-  ([overview](https://learn.microsoft.com/en-us/power-apps/powerapps-overview)), visual designers non-engineers can
-  edit, built-in M365/Dataverse integration and Microsoft-operated hosting/compliance
-  ([compliance](https://learn.microsoft.com/en-us/power-platform/admin/wp-compliance-data-privacy)); links checked 2026-10.
-  Sources for every claim: `docs/power-apps-comparison.md`.
+- **Not production.** Hosting, managed Postgres with backups, secrets, monitoring and a real Entra app registration
+  are not built.
+- **Audit is tamper-evident, not tamper-proof.** A database superuser can rewrite rows; the hash chain only detects
+  it. Production needs write-once storage.
+- **External systems are mocked:** Entra ID, Teams, the payment processor and the AP inbox.
+- **AP extraction is untested on real invoices.** It reads the text layer of synthetic PDFs, with no OCR.
+- **Power Apps stays better** for citizen-developer speed, visual editing by non-engineers, built-in Microsoft 365
+  integration and Microsoft-operated hosting and compliance.
