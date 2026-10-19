@@ -281,6 +281,8 @@ def verify(db: Session, p: Principal, iid: int, fields: dict[str, Any], reason: 
         setattr(inv, k, v)
     inv.invoice_number_norm = norm_number(inv.invoice_number)
     inv.verified_by = p.oid
+    if p.oid not in (inv.touched_by or []):
+        inv.touched_by = [*(inv.touched_by or []), p.oid]
     _match(db, inv)
     audit.record(
         db,
@@ -324,7 +326,7 @@ def requirement_for(db: Session, inv: Invoice) -> approvals.Requirement:
     stages = [approvals.Stage("AP approver", "ap.approve")]
     if (inv.total_cents or 0) >= tier2:
         stages.append(approvals.Stage("Financial controller", "ap.approve_tier2"))
-    excluded = [x for x in {inv.uploaded_by, inv.verified_by} if x]
+    excluded = sorted({x for x in (inv.uploaded_by, inv.verified_by, *(inv.touched_by or [])) if x})
     return approvals.Requirement(
         stages=stages,
         excluded_users=excluded,
