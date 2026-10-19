@@ -1,6 +1,12 @@
 from functools import lru_cache
+from typing import Self
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+DEV_ENV = "dev"
+# Fields whose defaults are local-dev values; outside env=dev they must be set (non-empty, non-default).
+DEV_ONLY_DEFAULTS = ("oidc_client_secret", "pii_hash_key", "cookie_secure")
 
 
 class Settings(BaseSettings):
@@ -27,6 +33,17 @@ class Settings(BaseSettings):
     rate_limit_sensitive: str = "30/minute"
     worker_poll_seconds: float = 0.5
     disable_scheduler: bool = False
+
+    @model_validator(mode="after")
+    def _refuse_dev_defaults_outside_dev(self) -> Self:
+        if self.env == DEV_ENV:
+            return self
+        fields = type(self).model_fields
+        bad = [k for k in DEV_ONLY_DEFAULTS if not getattr(self, k) or getattr(self, k) == fields[k].default]
+        if bad:
+            names = ", ".join(f"ITP_{k.upper()}" for k in bad)
+            raise ValueError(f"refusing to start with env={self.env!r}: set {names} (dev defaults in effect)")
+        return self
 
 
 @lru_cache
