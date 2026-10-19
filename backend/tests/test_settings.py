@@ -7,6 +7,7 @@ PROD_OVERRIDES = {
     "ITP_ENV": "prod",
     "ITP_PII_HASH_KEY": "k" * 32,
     "ITP_OIDC_CLIENT_SECRET": "s" * 32,
+    "ITP_DIRECTORY_API_KEY": "d" * 32,
     "ITP_COOKIE_SECURE": "true",
 }
 
@@ -32,6 +33,7 @@ def test_non_dev_with_all_overrides_boots(monkeypatch: pytest.MonkeyPatch) -> No
     [
         ("ITP_PII_HASH_KEY", "local-dev-pii-hash-key"),
         ("ITP_OIDC_CLIENT_SECRET", "local-dev-not-a-secret"),
+        ("ITP_DIRECTORY_API_KEY", "local-dev-directory-key"),
         ("ITP_COOKIE_SECURE", "false"),
     ],
 )
@@ -50,11 +52,23 @@ def test_non_dev_with_no_overrides_lists_all(monkeypatch: pytest.MonkeyPatch) ->
     with pytest.raises(ValidationError) as e:
         Settings()
     msg = str(e.value)
-    assert all(n in msg for n in ("ITP_PII_HASH_KEY", "ITP_OIDC_CLIENT_SECRET", "ITP_COOKIE_SECURE"))
+    names = ("ITP_PII_HASH_KEY", "ITP_OIDC_CLIENT_SECRET", "ITP_DIRECTORY_API_KEY", "ITP_COOKIE_SECURE")
+    assert all(n in msg for n in names)
 
 
-def test_non_dev_refuses_empty_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("name", ["ITP_PII_HASH_KEY", "ITP_OIDC_CLIENT_SECRET", "ITP_DIRECTORY_API_KEY"])
+def test_non_dev_refuses_empty_or_short_secret(monkeypatch: pytest.MonkeyPatch, name: str) -> None:
     _set(monkeypatch, PROD_OVERRIDES)
-    monkeypatch.setenv("ITP_PII_HASH_KEY", "")
-    with pytest.raises(ValidationError, match="ITP_PII_HASH_KEY"):
+    for bad in ("", "x" * 31):
+        monkeypatch.setenv(name, bad)
+        with pytest.raises(ValidationError, match=name):
+            Settings()
+
+
+@pytest.mark.parametrize("env", ["prod", "staging", "Dev", "development", ""])
+def test_any_env_other_than_dev_is_checked(monkeypatch: pytest.MonkeyPatch, env: str) -> None:
+    for k in PROD_OVERRIDES:
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("ITP_ENV", env)
+    with pytest.raises(ValidationError, match="ITP_DIRECTORY_API_KEY"):
         Settings()

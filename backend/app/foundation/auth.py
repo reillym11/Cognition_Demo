@@ -275,10 +275,13 @@ def principal_from_request(request: Request) -> Principal:
             if entry is None or not entry.enabled:
                 sess.revoked_at, sess.revoked_reason = now, "directory_disabled"
                 raise_after = "account disabled"
+            elif entry.region != sess.region:
+                # A region change moves the row scope; never re-scope a live session, make the user sign in again.
+                sess.revoked_at, sess.revoked_reason = now, "directory_region_changed"
+                raise_after = "region changed; sign in again"
             else:
                 # The directory can only take roles away; it never adds roles the IdP token did not carry.
                 sess.roles = sorted(set(sess.roles) & set(entry.roles))
-                sess.region = entry.region
                 sess.roles_checked_at = now
         if not raise_after:
             if request.method not in SAFE_METHODS:
