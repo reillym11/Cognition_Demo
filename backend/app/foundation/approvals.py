@@ -202,29 +202,6 @@ def decide(
     return req
 
 
-def cancel(db: Session, actor: Principal, request_id: int, reason: str, *, chain: str) -> ApprovalRequest:
-    req = db.execute(
-        select(ApprovalRequest).where(ApprovalRequest.id == request_id).with_for_update()
-    ).scalar_one()
-    if req.status != "open":
-        raise Conflict("request is closed")
-    if req.requested_by != actor.oid and not actor.is_system:
-        raise Forbidden("only the requester can cancel")
-    reason = require_reason(reason, "cancelling")
-    req.status, req.closed_at = "cancelled", datetime.now(UTC)
-    audit.record(
-        db,
-        actor,
-        "approval.cancel",
-        "approval",
-        req.id,
-        chain=chain,
-        reason=reason,
-        after={"status": "cancelled"},
-    )
-    return req
-
-
 def open_for_subject(db: Session, subject_type: str, subject_id: Any) -> ApprovalRequest | None:
     return db.execute(
         select(ApprovalRequest).where(

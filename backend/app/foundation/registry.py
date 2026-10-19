@@ -143,12 +143,6 @@ class Registry:
             out |= self.role_permissions.get(r, set())
         return frozenset(out)
 
-    def manifest(self, key: str) -> ToolManifest:
-        for m in self.manifests:
-            if m.key == key:
-                return m
-        raise KeyError(key)
-
 
 def discover() -> list[ToolManifest]:
     import app.tools

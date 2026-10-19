@@ -349,15 +349,3 @@ def logout(request: Request, principal: Principal = Depends(authenticated())) ->
     resp.delete_cookie(SESSION_COOKIE, path="/")
     resp.delete_cookie(CSRF_COOKIE, path="/")
     return resp
-
-
-def revoke_user_sessions(oid: str, reason: str) -> int:
-    with session_scope() as db:
-        rows = db.execute(
-            select(UserSession).where(UserSession.oid == oid, UserSession.revoked_at.is_(None))
-        ).scalars()
-        n = 0
-        for r in rows:
-            r.revoked_at, r.revoked_reason = datetime.now(UTC), reason
-            n += 1
-        return n
