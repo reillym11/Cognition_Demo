@@ -16,14 +16,15 @@ from authlib.jose import JsonWebKey, jwt
 from authlib.oauth2.rfc7636 import create_s256_code_challenge
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
-from sqlalchemy import delete, func, select
+from sqlalchemy import ColumnElement, delete, func, select
+from sqlalchemy.orm import Session
 
 from app.foundation import audit
 from app.foundation.adapters.directory import get_directory
 from app.foundation.authz import Principal, authenticated, public
 from app.foundation.db import session_scope
 from app.foundation.models import OidcLoginState, UserSession
-from app.foundation.ratelimit import signin_rate_limit
+from app.foundation.ratelimit import signin_client_key, signin_rate_limit
 from app.foundation.registry import get_registry
 from app.foundation.settings import get_settings
 
@@ -31,6 +32,7 @@ SESSION_COOKIE = "itp_session"
 CSRF_COOKIE = "itp_csrf"
 LOGIN_BINDING_COOKIE = "itp_login"
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+LOGIN_STATE_TTL = timedelta(minutes=10)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -56,6 +58,20 @@ def _safe_return_to(value: str | None) -> str:
     return value[:300]
 
 
+def _evict_oldest(db: Session, keep: int, *where: ColumnElement[bool]) -> None:
+    """Delete the oldest pending login states matching `where` so that at most `keep - 1` remain."""
+    pending = db.scalar(select(func.count()).select_from(OidcLoginState).where(*where)) or 0
+    excess = pending - max(keep, 1) + 1
+    if excess > 0:
+        oldest = (
+            select(OidcLoginState.state)
+            .where(*where)
+            .order_by(OidcLoginState.created_at, OidcLoginState.state)
+            .limit(excess)
+        )
+        db.execute(delete(OidcLoginState).where(OidcLoginState.state.in_(oldest)))
+
+
 def _login_error(code: str) -> RedirectResponse:
     return RedirectResponse(f"{get_settings().public_base_url}/login?error={code}", status_code=303)
 
@@ -65,24 +81,25 @@ def login(request: Request, return_to: str | None = None) -> RedirectResponse:
     s = get_settings()
     meta = _oidc_metadata()["meta"]
     state, nonce, verifier, binding = (secrets.token_urlsafe(32) for _ in range(4))
+    client = _hash(signin_client_key(request))
     with session_scope() as db:
         db.execute(
-            delete(OidcLoginState).where(
-                OidcLoginState.created_at < datetime.now(UTC) - timedelta(minutes=10)
-            )
+            delete(OidcLoginState).where(OidcLoginState.created_at < datetime.now(UTC) - LOGIN_STATE_TTL)
         )
         # A browser restarting sign-in gets a new binding cookie, so its earlier pending state is dead anyway.
         if prior := request.cookies.get(LOGIN_BINDING_COOKIE):
             db.execute(delete(OidcLoginState).where(OidcLoginState.browser_binding == _hash(prior)))
-        pending = db.scalar(select(func.count()).select_from(OidcLoginState)) or 0
-        if pending >= s.oidc_pending_login_cap:
-            return _login_error("signin_busy")
+        # Make room by evicting the oldest pending states, never by refusing: first this client's own, then (only
+        # if many distinct clients together exceed the storage bound) the oldest overall.
+        _evict_oldest(db, s.oidc_pending_logins_per_client, OidcLoginState.client_key == client)
+        _evict_oldest(db, s.oidc_pending_login_cap)
         db.add(
             OidcLoginState(
                 state=state,
                 nonce=nonce,
                 code_verifier=verifier,
                 browser_binding=_hash(binding),
+                client_key=client,
                 return_to=_safe_return_to(return_to),
             )
         )
@@ -103,7 +120,7 @@ def login(request: Request, return_to: str | None = None) -> RedirectResponse:
         httponly=True,
         samesite="lax",
         secure=s.cookie_secure,
-        max_age=600,
+        max_age=int(LOGIN_STATE_TTL.total_seconds()),
         path="/api/auth",
     )
     return resp
@@ -131,7 +148,7 @@ def callback(
         st = db.get(OidcLoginState, state)
         if st is None or not secrets.compare_digest(st.browser_binding, _hash(binding)):
             return _login_error("state_mismatch")
-        if st.created_at < datetime.now(UTC) - timedelta(minutes=10):
+        if st.created_at < datetime.now(UTC) - LOGIN_STATE_TTL:
             return _login_error("state_expired")
         db.delete(st)
         nonce, verifier, return_to = st.nonce, st.code_verifier, st.return_to

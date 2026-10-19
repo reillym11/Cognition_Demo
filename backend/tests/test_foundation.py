@@ -572,30 +572,104 @@ def test_signin_limit_is_separate_from_sensitive_and_per_client_ip(app, fake_oid
     assert victim.get("/api/auth/login").status_code == 303
 
 
-def test_login_caps_pending_states_and_replaces_same_browser_state(app, fake_oidc_metadata, monkeypatch):
-    from fastapi.testclient import TestClient
+def _pending_states(where=None) -> int:
     from sqlalchemy import func, select
 
-    from app.foundation import auth
     from app.foundation.models import OidcLoginState
-    from app.foundation.settings import get_settings
 
-    def pending() -> int:
-        with session_scope() as db:
-            return db.scalar(select(func.count()).select_from(OidcLoginState)) or 0
+    q = select(func.count()).select_from(OidcLoginState)
+    with session_scope() as db:
+        return db.scalar(q if where is None else q.where(where)) or 0
+
+
+def _started_signin(r) -> bool:
+    return r.status_code == 303 and r.headers["location"].startswith("http://idp.test/authorize?")
+
+
+def test_login_replaces_same_browser_state(app, fake_oidc_metadata):
+    from fastapi.testclient import TestClient
+
+    from app.foundation import auth
 
     browser = TestClient(app, follow_redirects=False)
     for _ in range(3):
-        assert browser.get("/api/auth/login").status_code == 303
+        assert _started_signin(browser.get("/api/auth/login"))
         assert browser.cookies.get(auth.LOGIN_BINDING_COOKIE, path="/api/auth")
-    assert pending() == 1
+    assert _pending_states() == 1
 
-    monkeypatch.setattr(get_settings(), "oidc_pending_login_cap", 2)
-    TestClient(app, follow_redirects=False).get("/api/auth/login")
-    assert pending() == 2
-    r = TestClient(app, follow_redirects=False).get("/api/auth/login")
-    assert r.status_code == 303 and r.headers["location"].endswith("/login?error=signin_busy")
-    assert pending() == 2
+
+def test_one_client_flood_only_evicts_its_own_pending_states(app, fake_oidc_metadata, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from app.foundation.models import OidcLoginState
+    from app.foundation.settings import get_settings
+
+    monkeypatch.setattr(get_settings(), "oidc_pending_logins_per_client", 3)
+    victim = TestClient(app, client=("10.0.0.77", 1000), follow_redirects=False)
+    state = victim.get("/api/auth/login").headers["location"].split("state=")[1].split("&")[0]
+    for _ in range(10):
+        # No binding cookie, so the prior-binding cleanup never helps; each call is a fresh anonymous client.
+        assert _started_signin(
+            TestClient(app, client=("10.0.0.66", 1000), follow_redirects=False).get("/api/auth/login")
+        )
+    assert _pending_states() == 4
+    with session_scope() as db:
+        assert db.get(OidcLoginState, state) is not None
+
+
+def test_many_clients_at_global_cap_cannot_block_a_fresh_signin(app, fake_oidc_metadata, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from app.foundation.models import OidcLoginState
+    from app.foundation.settings import get_settings
+
+    monkeypatch.setattr(get_settings(), "oidc_pending_logins_per_client", 2)
+    monkeypatch.setattr(get_settings(), "oidc_pending_login_cap", 5)
+    for i in range(8):
+        for _ in range(2):
+            attacker = TestClient(app, client=(f"10.1.0.{i}", 1000), follow_redirects=False)
+            assert _started_signin(attacker.get("/api/auth/login"))
+    assert _pending_states() == 5
+    fresh = TestClient(app, client=("10.9.9.9", 1000), follow_redirects=False)
+    r = fresh.get("/api/auth/login")
+    assert _started_signin(r) and "error=" not in r.headers["location"]
+    assert _pending_states() == 5
+    state = r.headers["location"].split("state=")[1].split("&")[0]
+    with session_scope() as db:
+        assert db.get(OidcLoginState, state) is not None
+
+
+def test_signin_client_key_groups_ipv6_by_64():
+    from starlette.requests import Request
+
+    from app.foundation.ratelimit import signin_client_key
+
+    def key(host: str) -> str:
+        return signin_client_key(Request({"type": "http", "headers": [], "client": (host, 1), "state": {}}))
+
+    assert key("2001:db8:1:2::1") == key("2001:db8:1:2:ffff:ffff:ffff:ffff") == "ip6:2001:db8:1:2::/64"
+    assert key("2001:db8:1:3::1") != key("2001:db8:1:2::1")
+    assert key("10.0.0.7") == key("::ffff:10.0.0.7") == "ip:10.0.0.7"
+    assert key("10.0.0.7") != key("10.0.0.8")
+
+
+def test_ipv6_prefix_shares_signin_rate_and_pending_budget(app, fake_oidc_metadata, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from app.foundation.settings import get_settings
+
+    monkeypatch.setattr(get_settings(), "rate_limit_signin", "3/minute")
+    monkeypatch.setattr(get_settings(), "oidc_pending_logins_per_client", 2)
+    codes = [
+        TestClient(app, client=(f"2001:db8:0:1::{i:x}", 1000), follow_redirects=False)
+        .get("/api/auth/login")
+        .status_code
+        for i in range(1, 5)
+    ]
+    assert codes == [303, 303, 303, 429]
+    assert _pending_states() == 2
+    other = TestClient(app, client=("2001:db8:0:2::1", 1000), follow_redirects=False)
+    assert _started_signin(other.get("/api/auth/login"))
 
 
 def test_sensitive_rate_limit_returns_429(login, monkeypatch):
