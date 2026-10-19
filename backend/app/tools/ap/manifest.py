@@ -18,6 +18,7 @@ MANIFEST = ToolManifest(
         "ap.bank.approve": "Approve a verified vendor bank-detail change",
         "ap.bank.reveal": "Reveal vendor bank details (audited)",
         "ap.batch": "Create and download payment batches",
+        "ap.policy.approve": "Approve changes to AP policies (confidence, tier-2 and PO tolerance)",
     },
     grants={
         "AP.Clerk": ["ap.read", "ap.upload", "ap.verify", "ap.bank.request"],
@@ -28,6 +29,7 @@ MANIFEST = ToolManifest(
             "ap.bank.approve",
             "ap.bank.reveal",
             "ap.batch",
+            "ap.policy.approve",
         ],
         "Audit.Auditor": ["ap.read"],
     },
@@ -40,13 +42,22 @@ MANIFEST = ToolManifest(
     schedules=[Schedule("ap.poll_inbox", 60)],
     policies={
         "ap.confidence_threshold": PolicyDef(
-            0.9, "Extracted fields below this confidence need a person to verify them", kind="float"
+            0.9,
+            "Extracted fields below this confidence need a person to verify them",
+            kind="float",
+            approver="ap.policy.approve",
         ),
         "ap.tier2_threshold_cents": PolicyDef(
-            1_000_000, "Invoices at or above this also need a financial controller", kind="cents"
+            1_000_000,
+            "Invoices at or above this also need a financial controller",
+            kind="cents",
+            approver="ap.policy.approve",
         ),
         "ap.po_tolerance_bps": PolicyDef(
-            200, "Allowed invoice overrun of the remaining PO value, in basis points", kind="int"
+            200,
+            "Allowed invoice overrun of the remaining PO value, in basis points",
+            kind="int",
+            approver="ap.policy.approve",
         ),
     },
     classifications={

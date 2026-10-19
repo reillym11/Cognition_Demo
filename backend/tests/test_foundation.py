@@ -148,33 +148,170 @@ def test_audit_diff_keeps_changed_fields_only():
 
 
 def test_policy_change_requires_someone_else(login):
-    cora = principal("cora.compliance")
     pia = principal("pia.platform")
+    key = "refunds.approval_threshold_cents"
     with session_scope() as db:
-        key = next(iter(policy.list_all(db)))["key"] if policy.list_all(db) else None
-    if key is None:
-        pytest.skip("no policies registered")
-    with session_scope() as db:
-        old = policy.get(db, key)
-        req = policy.request_change(db, cora, key, 12345 if isinstance(old, int) else 0.5, "tighten")
-        rid = req.id
+        rid = policy.request_change(db, pia, key, 12345, "tighten").id
     with session_scope() as db, pytest.raises(Forbidden):
-        approvals.decide(db, cora, rid, "approve", "self")
+        approvals.decide(db, pia, rid, "approve", "self")
+    with session_scope() as db, pytest.raises(Forbidden, match=r"refunds\.policy\.approve"):
+        approvals.decide(db, principal("cora.compliance"), rid, "approve", "not my domain")
     with session_scope() as db:
-        approvals.decide(db, pia, rid, "approve", "looks ok")
+        approvals.decide(db, principal("cam.controller"), rid, "approve", "looks ok")
     with session_scope() as db:
-        assert policy.get(db, key) == (12345 if isinstance(old, int) else 0.5)
+        assert policy.get(db, key) == 12345
         assert policy.current_version(db, key) == 2
 
 
-def test_policy_value_validation():
+def test_kyc_policy_needs_kyc_policy_approver():
+    cam = principal("cam.controller")
+    key = "kyc.fastlane_criteria"
+    tighter = {"max_vendor_score": 10, "max_watchlist_hits": 0, "require_docs_verified": True}
     with session_scope() as db:
-        items = policy.list_all(db)
-    ints = [i for i in items if i["kind"] in ("int", "cents")]
-    if not ints:
-        pytest.skip("no int policies")
+        rid = policy.request_change(db, cam, key, tighter, "tighten").id
+    with session_scope() as db, pytest.raises(Forbidden, match=r"kyc\.policy\.approve"):
+        approvals.decide(db, principal("pia.platform"), rid, "approve", "not my domain")
+    with session_scope() as db:
+        approvals.decide(db, principal("cora.compliance"), rid, "approve", "looks ok")
+    with session_scope() as db:
+        assert policy.get(db, key) == tighter
+
+
+def test_policy_value_validation():
     with session_scope() as db, pytest.raises(Invalid):
-        policy.request_change(db, principal("cora.compliance"), ints[0]["key"], -5, "bad")
+        policy.request_change(db, principal("cora.compliance"), "ap.po_tolerance_bps", -5, "bad")
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        (
+            "kyc.fastlane_criteria",
+            {"max_vendor_score": 1_000_000, "max_watchlist_hits": 0, "require_docs_verified": True},
+        ),
+        (
+            "kyc.fastlane_criteria",
+            {"max_vendor_score": 20, "max_watchlist_hits": 5, "require_docs_verified": True},
+        ),
+        (
+            "kyc.fastlane_criteria",
+            {"max_vendor_score": 20, "max_watchlist_hits": 0, "require_docs_verified": False},
+        ),
+        ("kyc.fastlane_criteria", {"max_vendor_score": 20, "max_watchlist_hits": 0}),
+        (
+            "kyc.fastlane_criteria",
+            {"max_vendor_score": "20", "max_watchlist_hits": 0, "require_docs_verified": True},
+        ),
+        ("kyc.fastlane_criteria", [20, 0, True]),
+        ("kyc.fastlane_criteria", None),
+        ("kyc.sla_hours", {"low": 72, "medium": 48}),
+        ("kyc.sla_hours", {"low": 72, "medium": 48, "high": 0}),
+        ("kyc.sla_hours", {"low": 24, "medium": 48, "high": 72}),
+        ("kyc.sla_hours", {"low": 72, "medium": 48, "high": 24, "extra": 1}),
+        ("refunds.velocity", {"window_minutes": 0, "max_requests": 10}),
+        ("refunds.velocity", {"window_minutes": 60, "max_requests": 1_000_000}),
+        ("refunds.velocity", {"window_minutes": 60, "max_requests": True}),
+        ("refunds.velocity", "off"),
+        ("ap.confidence_threshold", True),
+    ],
+)
+def test_json_policy_schema_rejects_weakened_or_malformed(key, value):
+    with pytest.raises(Invalid):
+        policy.validate(key, value)
+    with session_scope() as db, pytest.raises(Invalid):
+        policy.request_change(db, principal("pia.platform"), key, value, "weaken")
+
+
+def test_malformed_stored_policy_falls_back_to_default(caplog):
+    from app.foundation.models import PolicyValue
+    from app.foundation.registry import get_registry
+
+    key = "refunds.velocity"
+    with session_scope() as db:
+        db.add(PolicyValue(key=key, version=policy.current_version(db, key) + 1, value=[], created_by="test"))
+    with session_scope() as db:
+        assert policy.get(db, key) == get_registry().policies[key].default
+    assert any("refunds.velocity" in r.getMessage() for r in caplog.records)
+
+
+def _raw_policy_request(db, key, value, stage_perm):
+    return approvals.create_request(
+        db,
+        principal("pia.platform"),
+        kind="core.policy_change",
+        subject_type="policy",
+        subject_id=key,
+        title="legacy request",
+        reason="created before schemas",
+        chain="core",
+        requirement=approvals.Requirement(stages=[approvals.Stage("Policy approver", stage_perm)]),
+        payload={"key": key, "old": None, "new": value, "base_version": policy.current_version(db, key)},
+    ).id
+
+
+def test_apply_revalidates_value_and_approver():
+    key = "refunds.velocity"
+    with session_scope() as db:
+        rid = _raw_policy_request(
+            db, key, {"window_minutes": 0, "max_requests": 10}, "refunds.policy.approve"
+        )
+    with pytest.raises(Invalid), session_scope() as db:
+        approvals.decide(db, principal("cam.controller"), rid, "approve", "looks ok")
+    with session_scope() as db:
+        approvals.decide(db, principal("cam.controller"), rid, "reject", "invalid")
+        rid = _raw_policy_request(db, key, {"window_minutes": 30, "max_requests": 5}, "kyc.policy.approve")
+    with pytest.raises(Conflict, match=r"refunds\.policy\.approve"), session_scope() as db:
+        approvals.decide(db, principal("cora.compliance"), rid, "approve", "looks ok")
+    with session_scope() as db:
+        assert policy.current_version(db, key) == 1
+
+
+def _manifest(**pdef):
+    from app.foundation.registry import PolicyDef, ToolManifest
+
+    return ToolManifest(
+        key="t",
+        name="t",
+        description="t",
+        permissions={"t.policy.approve": "approve", "t.other": "other"},
+        grants={"R": ["t.policy.approve"]},
+        policies={"t.p": PolicyDef(**{"default": {"a": 1}, "description": "d", "kind": "json", **pdef})},
+    )
+
+
+@pytest.mark.parametrize(
+    "pdef",
+    [
+        {"approver": "t.policy.approve", "schema": None},
+        {"approver": ""},
+        {"approver": "t.policy.approve", "default": {"a": "not an int"}},
+        {"approver": "core.policy.approve"},
+        {"approver": "t.other"},
+        {"approver": "t.nope"},
+    ],
+)
+def test_registry_rejects_unsafe_policy_defs(pdef):
+    from pydantic import BaseModel
+
+    from app.foundation.registry import Registry
+
+    class S(BaseModel):
+        a: int
+
+    pdef = {"schema": S, **pdef}
+    with pytest.raises(RuntimeError):
+        Registry([_manifest(**pdef)])
+
+
+def test_registry_accepts_schema_and_owned_approver():
+    from pydantic import BaseModel
+
+    from app.foundation.registry import Registry
+
+    class S(BaseModel):
+        a: int
+
+    Registry([_manifest(schema=S, approver="t.policy.approve")])
 
 
 def test_money_rejects_floats_and_other_currencies():
@@ -198,6 +335,6 @@ def test_closed_request_rejects_decisions():
             db, cora, key, policy.validate(key, 1 if items[0]["kind"] != "float" else 0.1), "x y z"
         ).id
     with session_scope() as db:
-        approvals.decide(db, pia, rid, "reject", "not now")
+        approvals.decide(db, principal("cam.controller"), rid, "reject", "not now")
     with session_scope() as db, pytest.raises(Conflict):
-        approvals.decide(db, principal("cam.controller"), rid, "approve", "late")
+        approvals.decide(db, pia, rid, "approve", "late")
