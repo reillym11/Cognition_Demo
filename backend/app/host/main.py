@@ -36,6 +36,9 @@ SECURITY_HEADERS = {
 }
 
 
+MAX_LOGGED_PATH = 512
+
+
 class RequestContextMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         rid = request.headers.get("x-request-id") or uuid.uuid4().hex
@@ -50,7 +53,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             "http.request",
             extra={
                 "method": request.method,
-                "path": request.url.path,
+                "path": request.url.path[:MAX_LOGGED_PATH],
                 "status": response.status_code,
                 "ms": round((time.perf_counter() - start) * 1000, 1),
                 "actor": principal.oid if principal else None,
