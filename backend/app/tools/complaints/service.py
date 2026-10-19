@@ -75,7 +75,8 @@ WF = WorkflowDef(
         ),
     ),
 )
-# which fields can be edited while a case sits in a stage (earlier-stage fields stay editable until close)
+# which fields can be edited while a case sits in a stage. Earlier-stage fields stay editable until close,
+# except that compliance review freezes everything before it (see editable_fields).
 STAGE_FIELDS = {
     "intake": {"product", "summary", "channel"},
     "classify": {"category", "regulatory", "unfair_treatment"},
@@ -92,6 +93,19 @@ def data_of(c: Any) -> dict[str, Any]:
 
 def path_keys(c: Any) -> list[str]:
     return [s.key for s in WF.path(data_of(c))]
+
+
+def editable_fields(c: Any) -> set[str]:
+    keys = path_keys(c)
+    cur = keys.index(c.stage)
+    start = 0
+    if COMPLIANCE.key in keys:
+        review = keys.index(COMPLIANCE.key)
+        if cur == review:
+            start = review
+        elif cur > review:
+            start = review + 1
+    return set().union(*(STAGE_FIELDS[k] for k in keys[start : cur + 1]))
 
 
 def to_dict(c: Any, *, now: Any = None) -> dict[str, Any]:
@@ -173,11 +187,7 @@ def update(
     c = get(db, cid, lock=True)
     _require_open(c)
     _require_worker(c, p)
-    keys = path_keys(c)
-    allowed = set().union(*(STAGE_FIELDS[k] for k in keys[: keys.index(c.stage) + 1]))
-    if c.stage != "compliance_review":
-        allowed.discard("compliance_notes")
-    bad = set(fields) - allowed
+    bad = set(fields) - editable_fields(c)
     if bad:
         raise Invalid(f"fields not editable at stage '{c.stage}': {sorted(bad)}")
     if "category" in fields and fields["category"] not in CATEGORIES:
