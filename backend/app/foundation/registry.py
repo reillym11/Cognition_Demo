@@ -38,11 +38,16 @@ class PolicyDef:
 
 @dataclass(frozen=True)
 class ApprovalKind:
-    """Hooks run inside the deciding transaction once a request closes."""
+    """Hooks run inside the deciding transaction once a request closes.
+
+    `can_view(db, req, principal)` applies the tool's row scope to the request's subject; approvers who can't
+    see the subject can't list, read or decide the request.
+    """
 
     on_approved: Callable[[Session, Any], None]
     on_rejected: Callable[[Session, Any], None] | None = None
     label: str = ""
+    can_view: Callable[[Session, Any, Any], bool] | None = None
 
 
 @dataclass

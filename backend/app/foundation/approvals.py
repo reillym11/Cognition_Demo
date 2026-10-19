@@ -5,7 +5,8 @@ Invariants (property-tested in tests/test_approvals_props.py):
 - excluded users (e.g. anyone who prepared a KYC case) never decide;
 - one person decides at most once per request, so they can't satisfy two stages;
 - every decision has a reason and is audited;
-- deciding again with the same decision is idempotent; closed requests accept no decisions.
+- deciding again with the same decision is idempotent; closed requests accept no decisions;
+- deciders must pass the kind's `can_view` row scope on the subject (e.g. KYC region).
 """
 
 from dataclasses import asdict, dataclass, field
@@ -13,7 +14,7 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from app.foundation import audit
 from app.foundation.authz import Principal
@@ -96,7 +97,14 @@ def create_request(
     return req
 
 
-def can_decide(req: ApprovalRequest, actor: Principal) -> tuple[bool, str]:
+def can_view_subject(db: Session, req: ApprovalRequest, actor: Principal) -> bool:
+    kind = get_registry().approval_kinds.get(req.kind)
+    if kind is None:
+        return False
+    return actor.is_system or kind.can_view is None or bool(kind.can_view(db, req, actor))
+
+
+def can_decide(db: Session, req: ApprovalRequest, actor: Principal) -> tuple[bool, str]:
     if req.status != "open":
         return False, "request is closed"
     if actor.oid == req.requested_by:
@@ -107,6 +115,8 @@ def can_decide(req: ApprovalRequest, actor: Principal) -> tuple[bool, str]:
     stage = reqm.stages[req.current_stage]
     if not actor.has(stage.permission):
         return False, f"stage '{stage.name}' requires {stage.permission}"
+    if not can_view_subject(db, req, actor):
+        return False, "the subject of this request is outside your access scope"
     return True, ""
 
 
@@ -136,7 +146,7 @@ def decide(
             return req  # idempotent replay
         raise Conflict("you already decided this request differently")
     reason = require_reason(reason, "an approval decision")
-    ok, why = can_decide(req, actor)
+    ok, why = can_decide(db, req, actor)
     if not ok:
         raise (Conflict(why) if req.status != "open" else Forbidden(why, code="sod_violation"))
     reqm = Requirement.from_json(req.requirement)
@@ -257,7 +267,10 @@ def to_dict(
         ],
     }
     if viewer is not None:
-        ok, why = can_decide(req, viewer)
+        db = object_session(req)
+        if db is None:
+            raise ValueError("approval request must be attached to a session")
+        ok, why = can_decide(db, req, viewer)
         out["can_decide"], out["cannot_decide_reason"] = ok, why
     return out
 
