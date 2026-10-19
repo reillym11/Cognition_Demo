@@ -1,3 +1,4 @@
+import dataclasses
 import threading
 
 import pytest
@@ -81,9 +82,9 @@ def test_role_revocation_takes_effect_mid_session(login, directory, monkeypatch)
     c = login("aud.auditor")
     assert c.get("/api/audit/events").status_code == 200
     oid = "00000000-0000-4000-8000-000000000011"
-    directory.entries[oid] = directory.entries[oid].__class__(oid, True, [])
+    directory.entries[oid] = dataclasses.replace(directory.entries[oid], roles=[])
     assert c.get("/api/audit/events").status_code == 403
-    directory.entries[oid] = directory.entries[oid].__class__(oid, False, [])
+    directory.entries[oid] = dataclasses.replace(directory.entries[oid], enabled=False, roles=[])
     assert c.get("/api/me").status_code == 401
 
 
@@ -94,7 +95,7 @@ def test_directory_cannot_add_roles_the_token_did_not_carry(login, directory, mo
     c = login("aud.auditor")
     oid = "00000000-0000-4000-8000-000000000011"
     before = directory.entries[oid]
-    directory.entries[oid] = before.__class__(oid, True, [*before.roles, "Platform.Admin"])
+    directory.entries[oid] = dataclasses.replace(before, roles=[*before.roles, "Platform.Admin"])
     me = c.get("/api/me").json()
     assert me["roles"] == sorted(before.roles)
     assert "Platform.Admin" not in me["roles"]

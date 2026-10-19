@@ -9,6 +9,7 @@ from sqlalchemy import func, select, text
 from app.foundation import approvals, audit, policy
 from app.foundation.db import session_scope
 from app.foundation.errors import Conflict, Forbidden, Invalid
+from app.foundation.models import UserSession
 from app.tools.kyc import service
 from app.tools.kyc.models import KycCase, KycDecision
 from app.tools.kyc.seed import seed
@@ -209,20 +210,31 @@ def test_region_row_scope_and_masking(login):
     assert login("cora.compliance").get(f"/api/kyc/cases/{eu}").status_code == 200
 
 
-def test_directory_region_change_rescopes_live_session(login, directory, monkeypatch):
+def test_directory_region_change_ends_live_session(login, directory, monkeypatch):
     from app.foundation.settings import get_settings
 
     monkeypatch.setattr(get_settings(), "roles_revalidate_seconds", 0)
     us = make_case(region="US")
     eu = make_case(region="EU")
-    c = login("ana.analyst")
-    assert c.get(f"/api/kyc/cases/{eu}").status_code == 404
     oid = PERSONAS["ana.analyst"]["oid"]
-    directory.entries[oid] = dataclasses.replace(directory.entries[oid], region="EU")
-    assert c.get(f"/api/kyc/cases/{eu}").status_code == 200
-    assert c.get(f"/api/kyc/cases/{us}").status_code == 404
-    directory.entries[oid] = dataclasses.replace(directory.entries[oid], region=None)
-    assert c.get(f"/api/kyc/cases/{eu}").status_code == 404
+    for new_region in ("EU", None):
+        directory.entries[oid] = dataclasses.replace(directory.entries[oid], region="US")
+        c = login("ana.analyst")
+        assert c.get(f"/api/kyc/cases/{us}").status_code == 200
+        directory.entries[oid] = dataclasses.replace(directory.entries[oid], region=new_region)
+        assert c.get(f"/api/kyc/cases/{eu}").status_code == 401
+        assert c.get(f"/api/kyc/cases/{us}").status_code == 401
+        with session_scope() as db:
+            revoked = (
+                db.execute(
+                    select(UserSession.revoked_reason).where(
+                        UserSession.oid == oid, UserSession.revoked_at.is_not(None)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        assert revoked and set(revoked) == {"directory_region_changed"}
 
 
 def test_out_of_region_approver_cannot_see_or_decide(login):
