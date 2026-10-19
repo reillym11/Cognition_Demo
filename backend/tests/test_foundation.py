@@ -201,3 +201,31 @@ def test_closed_request_rejects_decisions():
         approvals.decide(db, pia, rid, "reject", "not now")
     with session_scope() as db, pytest.raises(Conflict):
         approvals.decide(db, principal("cam.controller"), rid, "approve", "late")
+
+
+def test_redact_text_masks_pii_shapes():
+    from app.foundation.datacls import redact_text
+
+    out = redact_text("mail jane.doe+x@mail.example.com ssn 123-45-6789 acct 123456789012")
+    assert out == "mail [REDACTED-EMAIL] ssn [REDACTED-SSN] acct [REDACTED-NUMBER]"
+
+
+def test_redact_text_is_linear_on_adversarial_input():
+    import time
+
+    from app.foundation.datacls import REDACT_MAX_CHARS, redact_text
+
+    # The old unbounded email pattern took ~6 s here (quadratic backtracking).
+    payload = "a." * (REDACT_MAX_CHARS // 2)
+    start = time.perf_counter()
+    redact_text(payload)
+    redact_text("/" + payload + "@x")
+    assert time.perf_counter() - start < 0.1
+
+
+def test_redact_text_bounds_input_length():
+    from app.foundation.datacls import REDACT_MAX_CHARS, redact_text
+
+    out = redact_text("x" * (REDACT_MAX_CHARS * 4) + " jane@example.com")
+    assert len(out) <= REDACT_MAX_CHARS + 20
+    assert "jane@example.com" not in out

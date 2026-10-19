@@ -74,15 +74,25 @@ def fingerprint_record(resource: str, record: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+# Quantifiers are bounded (RFC 5321: local part <= 64, domain <= 255) so each match attempt does
+# constant work; unbounded `[\w.+-]+@` is quadratic on long `a.a.a...` runs with no `@`.
 _PATTERNS = [
     (re.compile(r"\b\d{3}-\d{2}-\d{4}\b"), "[REDACTED-SSN]"),
-    (re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b"), "[REDACTED-EMAIL]"),
+    (re.compile(r"\b[\w.+-]{1,64}@[\w-]{1,63}\.[\w.-]{1,252}\b"), "[REDACTED-EMAIL]"),
     (re.compile(r"\b\d{9,17}\b"), "[REDACTED-NUMBER]"),
 ]
 
+REDACT_MAX_CHARS = 32_768
+_TRUNCATED = "...[truncated]"
+
 
 def redact_text(text: str) -> str:
-    """Last line of defence for logs: pattern-based redaction of anything PII-shaped."""
+    """Last line of defence for logs: pattern-based redaction of anything PII-shaped.
+
+    Input beyond REDACT_MAX_CHARS is dropped (never emitted unredacted) to bound per-line cost.
+    """
+    if len(text) > REDACT_MAX_CHARS:
+        text = text[:REDACT_MAX_CHARS] + _TRUNCATED
     for pat, repl in _PATTERNS:
         text = pat.sub(repl, text)
     return text
