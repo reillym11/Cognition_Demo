@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from fastapi import APIRouter
+from pydantic import BaseModel, ValidationError
 from sqlalchemy.orm import Session
 
 from app.foundation.datacls import Classification
@@ -29,11 +30,21 @@ class Schedule:
     every_seconds: int
 
 
+POLICY_KINDS = ("int", "cents", "float", "json")
+
+
 @dataclass(frozen=True)
 class PolicyDef:
+    """`approver` is the permission whose holders may approve a change (namespaced under the owning tool).
+
+    kind="json" policies must declare a pydantic `schema`; values are validated against it on change and on read.
+    """
+
     default: Any
     description: str
     kind: str = "int"  # int | cents | float | json
+    schema: type[BaseModel] | None = None
+    approver: str = ""
 
 
 @dataclass(frozen=True)
@@ -99,6 +110,26 @@ class Registry:
                     if p not in self.permissions:
                         raise RuntimeError(f"tool {m.key} grants unknown permission {p!r}")
                 self.role_permissions.setdefault(role, set()).update(perms)
+        for m in manifests:
+            for k, pdef in m.policies.items():
+                self._check_policy(m.key, k, pdef)
+
+    def _check_policy(self, tool: str, key: str, d: PolicyDef) -> None:
+        if not key.startswith(tool + "."):
+            raise RuntimeError(f"policy {key!r} must be namespaced under {tool!r}")
+        if d.kind not in POLICY_KINDS:
+            raise RuntimeError(f"policy {key!r} has unknown kind {d.kind!r}")
+        if not d.approver.startswith(tool + ".") or d.approver not in self.permissions:
+            raise RuntimeError(f"policy {key!r} needs an approver permission declared by {tool!r}")
+        if not any(d.approver in perms for perms in self.role_permissions.values()):
+            raise RuntimeError(f"policy {key!r} approver {d.approver!r} is not granted to any role")
+        if d.kind == "json":
+            if d.schema is None:
+                raise RuntimeError(f"json policy {key!r} must declare a schema")
+            try:
+                d.schema.model_validate(d.default)
+            except ValidationError as e:
+                raise RuntimeError(f"policy {key!r} default does not match its schema: {e}") from None
 
     @staticmethod
     def _unique(d: dict[str, Any], k: str, v: Any, what: str) -> None:

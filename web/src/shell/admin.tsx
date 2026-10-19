@@ -84,7 +84,7 @@ export function AuditPage() {
   );
 }
 
-type Policy = { key: string; description: string; kind: string; value: unknown; version: number; pending_request_id: number | null };
+type Policy = { key: string; description: string; kind: string; approver: string; value: unknown; version: number; pending_request_id: number | null };
 
 export function PolicyPage() {
   const me = useMe();
@@ -102,7 +102,7 @@ export function PolicyPage() {
           <TableBody>
             {q.data?.map((p) => (
               <TableRow key={p.key} className="border-t align-top" data-testid={`policy-${p.key}`}>
-                <TableCell className="px-3 py-2"><code>{p.key}</code><div className="text-xs text-slate-500">{p.description}</div></TableCell>
+                <TableCell className="px-3 py-2"><code>{p.key}</code><div className="text-xs text-slate-500">{p.description}</div><div className="text-xs text-slate-500">Approver: <code>{p.approver}</code></div></TableCell>
                 <TableCell className="px-3 py-2"><code>{JSON.stringify(p.value)}</code>{p.kind === "cents" && <span className="ml-1 text-xs text-slate-500">(cents)</span>}</TableCell>
                 <TableCell className="px-3 py-2">v{p.version}</TableCell>
                 <TableCell className="px-3 py-2">

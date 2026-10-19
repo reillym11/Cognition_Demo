@@ -1,7 +1,16 @@
+from pydantic import BaseModel, ConfigDict, Field
+
 from app.foundation.datacls import Classification as C
 from app.foundation.registry import ApprovalKind, NavItem, PolicyDef, Schedule, ToolManifest
 from app.tools.refunds import seed, service
 from app.tools.refunds.routes import router
+
+
+class Velocity(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    window_minutes: int = Field(ge=1, le=7 * 24 * 60)
+    max_requests: int = Field(ge=1, le=100)
+
 
 MANIFEST = ToolManifest(
     key="refunds",
@@ -16,6 +25,7 @@ MANIFEST = ToolManifest(
         "refunds.pii.reveal": "Reveal masked customer fields (audited, reason required)",
         "refunds.reconcile": "Trigger reconciliation of refunds with an unknown processor outcome",
         "refunds.export": "Export refunds",
+        "refunds.policy.approve": "Approve changes to refund policies (threshold, velocity)",
     },
     grants={
         "Support.Agent": [
@@ -27,7 +37,13 @@ MANIFEST = ToolManifest(
         ],
         "Support.Contractor": ["refunds.read", "refunds.request"],
         "Finance.Approver": ["refunds.read", "refunds.all_regions", "refunds.approve", "refunds.export"],
-        "Finance.Controller": ["refunds.read", "refunds.all_regions", "refunds.export", "refunds.reconcile"],
+        "Finance.Controller": [
+            "refunds.read",
+            "refunds.all_regions",
+            "refunds.export",
+            "refunds.reconcile",
+            "refunds.policy.approve",
+        ],
         "Audit.Auditor": ["refunds.read", "refunds.all_regions", "refunds.export"],
     },
     router=router,
@@ -43,12 +59,17 @@ MANIFEST = ToolManifest(
     schedules=[Schedule("refunds.reconcile_sweep", 300)],
     policies={
         "refunds.approval_threshold_cents": PolicyDef(
-            50_000, "Cumulative refunds on one charge above this need a Finance approver", kind="cents"
+            50_000,
+            "Cumulative refunds on one charge above this need a Finance approver",
+            kind="cents",
+            approver="refunds.policy.approve",
         ),
         "refunds.velocity": PolicyDef(
             {"window_minutes": 60, "max_requests": 10},
             "Requests per person per window before refunds are flagged and need approval",
             kind="json",
+            schema=Velocity,
+            approver="refunds.policy.approve",
         ),
     },
     classifications={"refund_transaction": {"customer_name": C.PII, "customer_email": C.PII}},
