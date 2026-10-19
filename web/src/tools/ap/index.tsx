@@ -39,11 +39,7 @@ function Queue() {
   const [q, setQ] = useState("");
   const stats = useQuery({ queryKey: ["ap-stats"], queryFn: () => http<{ by_status: { status: string; count: number; total_cents: number }[]; bank_changes_open: number }>("GET", "/api/ap/stats") });
   return (
-    <Page title="AP invoices" actions={
-      <div className="flex gap-2">
-        {can(me.data, "ap.batch") && <Button onClick={() => nav("/ap/batches")}>Payment batches</Button>}
-      </div>
-    }>
+    <Page title="AP invoices" actions={can(me.data, "ap.batch") ? <Button onClick={() => nav("/ap/batches")}>Payment batches</Button> : undefined}>
       <div className="flex flex-wrap gap-2 text-sm">
         {stats.data?.by_status.map((s) => <button key={s.status} onClick={() => setStatus(s.status)}><Badge tone={TONE[s.status]}>{statusLabel(s.status)}: {s.count} · {cents(s.total_cents)}</Badge></button>)}
       </div>
