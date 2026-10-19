@@ -7,16 +7,14 @@ Uploads are untrusted, so the PDF parser runs in a separate process with a wall-
 cap, rejects documents over a page limit and stops reading after a character limit."""
 
 import io
-import multiprocessing as mp
 import re
 from dataclasses import dataclass, field
 from datetime import date
-from multiprocessing.connection import Connection
-from multiprocessing.context import ForkServerContext, SpawnContext
 from typing import Any, Protocol
 
 import pdfplumber
 
+from app.foundation import sandbox
 from app.foundation.money import parse_cents
 
 
@@ -45,7 +43,6 @@ MAX_PAGES = 20
 MAX_CHARS = 200_000
 TIMEOUT_SECONDS = 15.0
 MAX_MEMORY_BYTES = 1024 * 1024 * 1024
-_LIMIT = "limit"
 
 
 class Extractor(Protocol):
@@ -89,56 +86,21 @@ def _parse(key: str, raw: str) -> Any:
     return raw
 
 
-def _limit_memory(max_bytes: int) -> None:
-    try:
-        import resource
-
-        resource.setrlimit(resource.RLIMIT_AS, (max_bytes, max_bytes))
-    except (ImportError, ValueError, OSError):
-        pass
-
-
-def _caused_by_memory(e: BaseException | None) -> bool:
-    while e is not None:
-        if isinstance(e, MemoryError):
-            return True
-        e = e.__cause__ or e.__context__
-    return False
-
-
-def _read_text(content: bytes, conn: Connection, max_pages: int, max_chars: int, max_memory: int) -> None:
-    """Child-process entry point: sends ("ok", text, truncated), (_LIMIT, message) or ("error", type name)."""
-    try:
-        _limit_memory(max_memory)
-        with pdfplumber.open(io.BytesIO(content)) as pdf:
-            if len(pdf.pages) > max_pages:
-                conn.send((_LIMIT, f"PDF has more than {max_pages} pages"))
-                return
-            parts: list[str] = []
-            size = 0
-            for page in pdf.pages:
-                t = page.extract_text() or ""
-                parts.append(t)
-                size += len(t) + 1
-                if size > max_chars:
-                    break
-        text = "\n".join(parts)
-        conn.send(("ok", text[:max_chars], len(text) > max_chars))
-    except Exception as e:  # malformed PDF internals; only the type crosses the process boundary
-        if _caused_by_memory(e):
-            conn.send((_LIMIT, "PDF needs too much memory to read"))
-        else:
-            conn.send(("error", type(e).__name__))
-    finally:
-        conn.close()
-
-
-def _mp_context() -> ForkServerContext | SpawnContext:
-    if "forkserver" in mp.get_all_start_methods():
-        ctx = mp.get_context("forkserver")
-        ctx.set_forkserver_preload([__name__])
-        return ctx
-    return mp.get_context("spawn")
+def _read_text(content: bytes, max_pages: int, max_chars: int) -> tuple[str, bool]:
+    """Runs in the sandbox child."""
+    with pdfplumber.open(io.BytesIO(content)) as pdf:
+        if len(pdf.pages) > max_pages:
+            raise sandbox.LimitExceeded(f"has more than {max_pages} pages")
+        parts: list[str] = []
+        size = 0
+        for page in pdf.pages:
+            t = page.extract_text() or ""
+            parts.append(t)
+            size += len(t) + 1
+            if size > max_chars:
+                break
+    text = "\n".join(parts)
+    return text[:max_chars], len(text) > max_chars
 
 
 class PdfTextExtractor:
@@ -158,31 +120,21 @@ class PdfTextExtractor:
         self.max_memory_bytes = max_memory_bytes
 
     def _text(self, content: bytes) -> tuple[str, bool]:
-        ctx = _mp_context()
-        recv, send = ctx.Pipe(duplex=False)
-        proc = ctx.Process(
-            target=_read_text,
-            args=(content, send, self.max_pages, self.max_chars, self.max_memory_bytes),
-            name="pdf-extract",
-        )
-        proc.start()
-        send.close()
         try:
-            if not recv.poll(self.timeout_seconds):
-                raise ExtractionLimitExceeded(f"PDF took longer than {self.timeout_seconds:g}s to read")
-            msg = recv.recv()
-        except EOFError:
-            raise ExtractionLimitExceeded("PDF reader exceeded its resource limits") from None
-        finally:
-            if proc.is_alive():
-                proc.kill()
-            proc.join()
-            recv.close()
-        if msg[0] == "ok":
-            return msg[1], msg[2]
-        if msg[0] == _LIMIT:
-            raise ExtractionLimitExceeded(msg[1])
-        raise ValueError(f"PDF parse failed: {msg[1]}")
+            text, truncated = sandbox.run(
+                _read_text,
+                content,
+                self.max_pages,
+                self.max_chars,
+                timeout_seconds=self.timeout_seconds,
+                max_memory_bytes=self.max_memory_bytes,
+                name="pdf-extract",
+            )
+        except sandbox.LimitExceeded as e:
+            raise ExtractionLimitExceeded(f"PDF {e}") from None
+        except sandbox.ChildFailed as e:
+            raise ValueError(f"PDF parse failed: {e}") from None
+        return text, truncated
 
     def extract(self, content: bytes) -> Extraction:
         text, truncated = self._text(content)

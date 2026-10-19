@@ -214,6 +214,7 @@ async def ap_inbox_put(request: Request) -> dict[str, int]:
 
 
 @app.post("/ap-inbox/messages/take")
-def ap_inbox_take() -> list[dict[str, Any]]:
-    items, STATE["ap_inbox"] = STATE["ap_inbox"], []
+def ap_inbox_take(limit: int | None = None) -> list[dict[str, Any]]:
+    n = len(STATE["ap_inbox"]) if limit is None else max(limit, 0)
+    items, STATE["ap_inbox"] = STATE["ap_inbox"][:n], STATE["ap_inbox"][n:]
     return items
