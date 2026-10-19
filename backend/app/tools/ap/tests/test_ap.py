@@ -1,13 +1,15 @@
 import base64
+import io
 
 import httpx
 import pytest
+from reportlab.pdfgen import canvas
 from sqlalchemy import select
 
 from app.foundation import approvals, audit, files
 from app.foundation.db import session_scope
 from app.foundation.errors import Conflict, Forbidden, Invalid
-from app.foundation.extraction import PdfTextExtractor
+from app.foundation.extraction import ExtractionLimitExceeded, PdfTextExtractor, get_extractor, set_extractor
 from app.foundation.money import parse_cents
 from app.foundation.settings import get_settings
 from app.tools.ap import pdfgen, service
@@ -182,6 +184,45 @@ def test_file_validation():
         and files.sanitize_name("in voice<>.pdf") == "in_voice_.pdf"
     )
     files.validate(pdf())  # our generated PDFs carry no active content
+
+
+def many_pages(n: int) -> bytes:
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf)
+    for i in range(n):
+        c.drawString(72, 720, f"Page {i}")
+        c.showPage()
+    c.save()
+    return buf.getvalue()
+
+
+def test_extraction_rejects_too_many_pages():
+    with pytest.raises(ExtractionLimitExceeded, match="more than 20 pages"):
+        PdfTextExtractor().extract(many_pages(21))
+    assert PdfTextExtractor().extract(many_pages(20)).fields["total"].value is None
+
+
+def test_extraction_enforces_timeout_memory_and_char_limits():
+    with pytest.raises(ExtractionLimitExceeded, match="longer than"):
+        PdfTextExtractor(timeout_seconds=0.001).extract(pdf())
+    with pytest.raises(ExtractionLimitExceeded):
+        PdfTextExtractor(max_memory_bytes=32 * 1024 * 1024).extract(pdf())
+    ex = PdfTextExtractor(max_chars=40).extract(pdf())
+    assert "text layer truncated at 40 characters" in ex.warnings and ex.fields["total"].value is None
+
+
+def test_ingest_rejects_pdf_over_limits(vendor_po):
+    with pytest.raises(Invalid) as e:
+        ingest(many_pages(21))
+    assert e.value.code == "extract_limit"
+    prev = get_extractor()
+    set_extractor(PdfTextExtractor(timeout_seconds=0.001))
+    try:
+        with pytest.raises(Invalid) as e:
+            ingest(pdf(number="SLOW"))
+        assert e.value.code == "extract_limit"
+    finally:
+        set_extractor(prev)
 
 
 def test_money_parse():
