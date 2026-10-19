@@ -3,7 +3,9 @@ import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { http } from "../../api/client";
 import { can, useMe } from "../../shell/me";
-import { AuditTimeline, Badge, Button, Card, DataTable, ErrorBox, ExportButton, Field, KeyValues, MaskedField, Page, ReasonAction, Select, StageBar, dt, inputCls } from "../../ui/kit";
+import {
+  AuditTimeline, Badge, Button, Card, DataTable, ErrorBox, ExportButton, Field, KeyValues, MaskedField, Page, ReasonAction, Select, StageBar, dt, Input, Textarea, Choice, Checkbox, SearchBox, RecordTabs, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow,
+} from "../../ui/kit";
 import type { ToolRoute } from "../registry";
 
 type PathStage = { key: string; label: string; sla_hours: number; required: string[]; checklist: string[] };
@@ -26,13 +28,13 @@ function Queue() {
   const set = (k: keyof typeof f) => (v: string) => setF({ ...f, [k]: v });
   return (
     <Page title="Complaints" actions={can(me.data, "complaints.export") && <ExportButton url="/api/complaints/register.csv" params={{ status: f.status, regulatory: f.regulatory }} />}>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-end gap-3">
         <Select label="Status" value={f.status} onChange={set("status")} options={[["open", "Open"], ["closed", "Closed"], ["", "All"]]} />
         <Select label="Stage" value={f.stage} onChange={set("stage")} options={[["", "Any stage"], ...(meta.data?.stages.map((s) => [s.key, s.label] as [string, string]) ?? [])]} />
         <Select label="Regulatory" value={f.regulatory} onChange={set("regulatory")} options={[["", "All"], ["1", "Regulatory / unfair treatment"]]} />
         <Select label="Overdue" value={f.overdue} onChange={set("overdue")} options={[["", "Any SLA"], ["1", "Stage overdue"]]} />
         <Select label="Mine" value={f.mine} onChange={set("mine")} options={[["", "Anyone"], ["1", "Assigned to me"]]} />
-        <input aria-label="Search complaints" placeholder="ref or summary" className="rounded border px-2 py-1 text-sm" value={f.q} onChange={(e) => set("q")(e.target.value)} />
+        <SearchBox label="Search complaints" placeholder="ref or summary" value={f.q} onChange={(v) => set("q")(v)} />
       </div>
       <DataTable<Complaint>
         url="/api/complaints"
@@ -79,16 +81,16 @@ function StageForm({ c, meta, onSaved }: { c: Complaint; meta: Meta; onSaved: ()
     const on = (x: string) => setVals({ ...vals, [k]: x });
     if (k === "product" || k === "category") {
       const opts = k === "product" ? meta.products : meta.categories;
-      return <select aria-label={FIELD_LABELS[k]} className={inputCls} value={v} onChange={(e) => on(e.target.value)}><option value="">choose…</option>{opts.map((o) => <option key={o}>{o}</option>)}</select>;
+      return <Choice aria-label={FIELD_LABELS[k]} value={v} onChange={(e) => on(e.target.value)}><option value="">choose…</option>{opts.map((o) => <option key={o}>{o}</option>)}</Choice>;
     }
     if (k === "root_cause")
       return (
-        <select aria-label="Root cause" className={inputCls} value={v} onChange={(e) => on(e.target.value)}>
+        <Choice aria-label="Root cause" value={v} onChange={(e) => on(e.target.value)}>
           <option value="">choose…</option>
           {Object.entries(meta.root_causes).map(([g, rcs]) => <optgroup key={g} label={g}>{rcs.map((r) => <option key={r}>{r}</option>)}</optgroup>)}
-        </select>
+        </Choice>
       );
-    return k === "summary" ? <input aria-label={FIELD_LABELS[k]} className={inputCls} value={v} onChange={(e) => on(e.target.value)} /> : <textarea aria-label={FIELD_LABELS[k]} rows={3} className={inputCls} value={v} onChange={(e) => on(e.target.value)} />;
+    return k === "summary" ? <Input aria-label={FIELD_LABELS[k]} value={v} onChange={(e) => on(e.target.value)} /> : <Textarea aria-label={FIELD_LABELS[k]} rows={3} value={v} onChange={(e) => on(e.target.value)} />;
   };
   return (
     <Card title={`Stage: ${stage.label} (SLA ${stage.sla_hours}h)`}>
@@ -96,13 +98,13 @@ function StageForm({ c, meta, onSaved }: { c: Complaint; meta: Meta; onSaved: ()
         {stage.required.map((k) => <Field key={k} label={`${FIELD_LABELS[k] ?? k} *`}>{input(k)}</Field>)}
         {c.stage === "classify" && (
           <div className="flex gap-4 text-sm">
-            <label className="flex items-center gap-1"><input type="checkbox" checked={regs.regulatory} onChange={(e) => setRegs({ ...regs, regulatory: e.target.checked })} /> Regulatory</label>
-            <label className="flex items-center gap-1"><input type="checkbox" checked={regs.unfair_treatment} onChange={(e) => setRegs({ ...regs, unfair_treatment: e.target.checked })} /> Possible unfair treatment</label>
+            <Checkbox checked={regs.regulatory} onChange={(e) => setRegs({ ...regs, regulatory: e.target.checked })} label={<>Regulatory</>} />
+            <Checkbox checked={regs.unfair_treatment} onChange={(e) => setRegs({ ...regs, unfair_treatment: e.target.checked })} label={<>Possible unfair treatment</>} />
             <span className="text-xs text-slate-500">Either tag adds a compliance-review stage.</span>
           </div>
         )}
         {stage.checklist.map((k) => (
-          <label key={k} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={!!checks[k]} onChange={(e) => setChecks({ ...checks, [k]: e.target.checked })} /> {k.replace(/_/g, " ")}</label>
+          <Checkbox checked={!!checks[k]} onChange={(e) => setChecks({ ...checks, [k]: e.target.checked })} label={<>{k.replace(/_/g, " ")}</>} />
         ))}
         <ErrorBox error={err} />
         <div className="flex gap-2">
@@ -135,8 +137,9 @@ function Detail() {
   const c = q.data;
   const reveal = (field: "customer_name" | "customer_email") => <MaskedField field={field} value={c[field]} revealUrl={`/api/complaints/${c.id}/reveal`} canReveal={!!c.can?.reveal} />;
   return (
-    <Page title={`${c.ref} · ${c.summary ?? "untriaged"}`} actions={c.can?.claim && <Button onClick={async () => { await http("POST", `/api/complaints/${c.id}/claim`); refresh(); }}>Claim</Button>}>
+    <Page subtitle="Complaint" title={`${c.ref} · ${c.summary ?? "untriaged"}`} actions={c.can?.claim && <Button onClick={async () => { await http("POST", `/api/complaints/${c.id}/claim`); refresh(); }}>Claim</Button>}>
       {c.status === "open" ? <StageBar stages={c.path} current={c.stage} /> : <Badge tone="green">Closed</Badge>}
+      <RecordTabs tabs={[{ key: "summary", label: "Summary", content: <>
       <div className="grid gap-4 lg:grid-cols-2">
         <Card title="Complaint">
           <KeyValues rows={[
@@ -155,15 +158,15 @@ function Detail() {
             {c.can?.work && (
               <ReasonAction label="Link case" extra={
                 <div className="flex gap-2">
-                  <select aria-label="Link kind" className={inputCls} value={link.kind} onChange={(e) => setLink({ ...link, kind: e.target.value })}><option value="refund">refund</option><option value="kyc">kyc</option></select>
-                  <input aria-label="Link id" className={inputCls} value={link.id} onChange={(e) => setLink({ ...link, id: e.target.value })} placeholder="id" />
+                  <Choice aria-label="Link kind" value={link.kind} onChange={(e) => setLink({ ...link, kind: e.target.value })}><option value="refund">refund</option><option value="kyc">kyc</option></Choice>
+                  <Input aria-label="Link id" value={link.id} onChange={(e) => setLink({ ...link, id: e.target.value })} placeholder="id" />
                 </div>
               } onSubmit={async (reason) => { await http("POST", `/api/complaints/${c.id}/links`, { kind: link.kind, id: Number(link.id), reason }); refresh(); }} />
             )}
           </Card>
         </div>
       </div>
-      <Card title="Audit trail"><AuditTimeline url={`/api/complaints/${c.id}/audit`} /></Card>
+      </> }, { key: "audit", label: "Audit history", content: <Card title="Audit trail"><AuditTimeline url={`/api/complaints/${c.id}/audit`} /></Card> }]} />
     </Page>
   );
 }
@@ -191,9 +194,9 @@ function Aging() {
         </div>
       </Card>
       <Card title="By stage">
-        <table className="min-w-full text-sm"><thead className="text-left text-xs uppercase text-slate-500"><tr><th>Stage</th><th>Open</th><th>Overdue</th></tr></thead>
-          <tbody>{q.data.stages.map((s) => <tr key={s.stage} className="border-t"><td className="py-1">{s.label}</td><td>{s.open}</td><td className={s.overdue ? "font-semibold text-red-700" : ""}>{s.overdue}</td></tr>)}</tbody>
-        </table>
+        <Table size="small" className="min-w-full text-sm"><TableHeader className="text-left text-xs uppercase text-slate-500"><TableRow><TableHeaderCell>Stage</TableHeaderCell><TableHeaderCell>Open</TableHeaderCell><TableHeaderCell>Overdue</TableHeaderCell></TableRow></TableHeader>
+          <TableBody>{q.data.stages.map((s) => <TableRow key={s.stage} className="border-t"><TableCell className="py-1">{s.label}</TableCell><TableCell>{s.open}</TableCell><TableCell className={s.overdue ? "font-semibold text-red-700" : ""}>{s.overdue}</TableCell></TableRow>)}</TableBody>
+        </Table>
       </Card>
     </Page>
   );

@@ -3,7 +3,9 @@ import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { http } from "../../api/client";
 import { can, useMe } from "../../shell/me";
-import { ApprovalPanel, AuditTimeline, Badge, Button, Card, DataTable, ErrorBox, Field, KeyValues, MaskedField, Page, ReasonAction, Select, cents, dt, inputCls, type Approval } from "../../ui/kit";
+import {
+  ApprovalPanel, AuditTimeline, Badge, Button, Card, DataTable, ErrorBox, Field, KeyValues, MaskedField, Page, ReasonAction, Select, cents, dt, type Approval, Input, Checkbox, SearchBox, RecordTabs, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow,
+} from "../../ui/kit";
 import type { ToolRoute } from "../registry";
 
 type FieldX = { value: unknown; confidence: number };
@@ -43,7 +45,7 @@ function Queue() {
       <div className="flex gap-2">
         {can(me.data, "ap.upload") && (
           <>
-            <label className="cursor-pointer rounded bg-blue-700 px-3 py-1.5 text-sm text-white">Upload PDF<input type="file" accept="application/pdf" className="sr-only" aria-label="Upload invoice PDF" onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} /></label>
+            <label className="cursor-pointer rounded px-3 py-1.5 text-sm font-semibold text-white" style={{ background: "var(--colorBrandBackground)" }}>Upload PDF<input type="file" accept="application/pdf" className="sr-only" aria-label="Upload invoice PDF" onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} /></label>
             <Button onClick={async () => { await http("POST", "/api/ap/inbox/poll"); qc.invalidateQueries(); }}>Poll AP inbox</Button>
           </>
         )}
@@ -54,9 +56,9 @@ function Queue() {
       <div className="flex flex-wrap gap-2 text-sm">
         {stats.data?.by_status.map((s) => <button key={s.status} onClick={() => setStatus(s.status)}><Badge tone={TONE[s.status]}>{s.status}: {s.count} · {cents(s.total_cents)}</Badge></button>)}
       </div>
-      <div className="flex gap-2">
+      <div className="flex flex-wrap items-end gap-3">
         <Select label="Status" value={status} onChange={setStatus} options={[["", "All"], ...Object.keys(TONE).map((k) => [k, k] as [string, string])]} />
-        <input aria-label="Search invoices" placeholder="vendor or number" className="rounded border px-2 py-1 text-sm" value={q} onChange={(e) => setQ(e.target.value)} />
+        <SearchBox label="Search invoices" placeholder="vendor or number" value={q} onChange={(v) => setQ(v)} />
       </div>
       <DataTable<Invoice>
         url="/api/ap/invoices" params={{ status, q }} rowTestId="invoice-row" onRowClick={(r) => nav(`/ap/invoices/${r.id}`)}
@@ -83,7 +85,7 @@ function VerifyForm({ inv, onDone }: { inv: Invoice; onDone: () => void }) {
       <div className="grid grid-cols-2 gap-2">
         {editable.map((k) => (
           <Field key={k} label={`${k} (${Math.round(conf(k) * 100)}%)`}>
-            <input aria-label={k} className={`${inputCls} ${conf(k) < 0.9 ? "border-amber-500 bg-amber-50" : ""}`} placeholder={String((inv as unknown as Record<string, unknown>)[k] ?? "")}
+            <Input aria-label={k} className={conf(k) < 0.9 ? "ring-2 ring-amber-400" : undefined} placeholder={String((inv as unknown as Record<string, unknown>)[k] ?? "")}
               value={vals[k] ?? ""} onChange={(e) => setVals({ ...vals, [k]: e.target.value })} />
           </Field>
         ))}
@@ -109,7 +111,8 @@ function Detail() {
   const workable = ["needs_verification", "exception"].includes(inv.status);
   const bankDiff = (inv.match.issues ?? []).includes("bank_details_differ");
   return (
-    <Page title={`Invoice ${inv.invoice_number ?? `#${inv.id}`}`} actions={<Badge tone={TONE[inv.status]}>{inv.status}</Badge>}>
+    <Page subtitle="Vendor invoice" title={`Invoice ${inv.invoice_number ?? `#${inv.id}`}`} status={<Badge tone={TONE[inv.status]}>{inv.status}</Badge>}>
+      <RecordTabs tabs={[{ key: "summary", label: "Summary", content: <>
       <div className="grid gap-4 lg:grid-cols-2">
         <Card title="Document"><iframe title="Invoice PDF" src={`/api/ap/invoices/${inv.id}/file`} className="h-[520px] w-full rounded border" /></Card>
         <div className="space-y-4">
@@ -123,7 +126,7 @@ function Detail() {
               ["Issues", (inv.match.issues ?? []).map((i) => <Badge key={i} tone="red">{i}</Badge>)],
               ["Duplicate of", inv.duplicate_of ? <a className="text-blue-700 underline" href={`/ap/invoices/${inv.duplicate_of}`}>#{inv.duplicate_of}</a> : "—"],
             ]} />
-            <table className="mt-2 min-w-full text-xs"><tbody>{inv.line_items.map((l, i) => <tr key={i} className="border-t"><td>{l.description}</td><td>{l.quantity}</td><td>{money(l.unit_cents)}</td><td>{money(l.amount_cents)}</td></tr>)}</tbody></table>
+            <Table size="small" className="mt-2 min-w-full text-xs"><TableBody>{inv.line_items.map((l, i) => <TableRow key={i} className="border-t"><TableCell>{l.description}</TableCell><TableCell>{l.quantity}</TableCell><TableCell>{money(l.unit_cents)}</TableCell><TableCell>{money(l.amount_cents)}</TableCell></TableRow>)}</TableBody></Table>
           </Card>
           <div className="flex flex-wrap gap-2">
             {inv.can?.verify && inv.status === "matched" && <ReasonAction label="Submit for approval" variant="primary" testId="submit" onSubmit={async (reason) => { await http("POST", `/api/ap/invoices/${inv.id}/submit`, { reason }); refresh(); }} />}
@@ -139,7 +142,7 @@ function Detail() {
           {inv.approval && <Card title="Approval"><ApprovalPanel approval={inv.approval} invalidate={[qk]} /></Card>}
         </div>
       </div>
-      <Card title="Audit trail"><AuditTimeline url={`/api/ap/invoices/${inv.id}/audit`} /></Card>
+      </> }, { key: "audit", label: "Audit history", content: <Card title="Audit trail"><AuditTimeline url={`/api/ap/invoices/${inv.id}/audit`} /></Card> }]} />
     </Page>
   );
 }
@@ -153,9 +156,9 @@ function BankChanges() {
     <Page title="Vendor bank changes">
       <p className="text-sm text-slate-600">Every change is verified by a call-back to the phone number already on file (by someone other than the requester) and approved by a financial controller (a third person).</p>
       <ErrorBox error={q.error} />
-      <table className="min-w-full text-sm"><thead className="text-left text-xs uppercase text-slate-500"><tr><th>#</th><th>Vendor</th><th>Status</th><th>Requested by</th><th>When</th></tr></thead>
-        <tbody>{q.data?.map((b) => <tr key={b.id} className="cursor-pointer border-t hover:bg-slate-50" onClick={() => nav(`/ap/bank-changes/${b.id}`)}><td className="py-1">{b.id}</td><td>{b.vendor_name}</td><td><Badge tone={b.status === "applied" ? "green" : b.status === "rejected" ? "slate" : "amber"}>{b.status}</Badge></td><td>{b.requested_by_name}</td><td>{dt(b.created_at)}</td></tr>)}</tbody>
-      </table>
+      <Table size="small" className="min-w-full text-sm"><TableHeader className="text-left text-xs uppercase text-slate-500"><TableRow><TableHeaderCell>#</TableHeaderCell><TableHeaderCell>Vendor</TableHeaderCell><TableHeaderCell>Status</TableHeaderCell><TableHeaderCell>Requested by</TableHeaderCell><TableHeaderCell>When</TableHeaderCell></TableRow></TableHeader>
+        <TableBody>{q.data?.map((b) => <TableRow key={b.id} className="cursor-pointer border-t hover:bg-slate-50" onClick={() => nav(`/ap/bank-changes/${b.id}`)}><TableCell className="py-1">{b.id}</TableCell><TableCell>{b.vendor_name}</TableCell><TableCell><Badge tone={b.status === "applied" ? "green" : b.status === "rejected" ? "slate" : "amber"}>{b.status}</Badge></TableCell><TableCell>{b.requested_by_name}</TableCell><TableCell>{dt(b.created_at)}</TableCell></TableRow>)}</TableBody>
+      </Table>
     </Page>
   );
 }
@@ -169,7 +172,7 @@ function BankChangeDetail() {
   if (!q.data) return <ErrorBox error={q.error} />;
   const b = q.data;
   return (
-    <Page title={`Bank change #${b.id} · ${b.vendor_name}`} actions={<Badge tone="amber">{b.status}</Badge>}>
+    <Page subtitle="Vendor bank change" title={`Bank change #${b.id} · ${b.vendor_name}`} status={<Badge tone="amber">{b.status}</Badge>}>
       <Card title="Change">
         <KeyValues rows={[["Current", `${b.current?.bank_name} · acct ${b.current?.bank_account}`], ["Requested", `${b.new_bank_name} · acct ${b.new_account} · routing ${b.new_routing}`],
           ["Requested by", `${b.requested_by_name}: ${b.request_reason}`], ["Phone on file", b.phone_on_file], ["Call-back notes", b.callback_notes ?? "—"]]} />
@@ -177,7 +180,7 @@ function BankChangeDetail() {
       {b.can?.callback && (
         <Card title="Record call-back">
           <p className="mb-2 text-sm">Call <strong>{b.phone_on_file}</strong> (the number on file, never one from the invoice or email) and confirm the change with a known contact.</p>
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} /> Vendor confirmed the new details</label>
+          <Checkbox checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} label={<>Vendor confirmed the new details</>} />
           <ReasonAction label="Record call-back" variant="primary" testId="callback" onSubmit={async (notes) => { await http("POST", `/api/ap/bank-changes/${b.id}/callback`, { confirmed, notes }); qc.invalidateQueries({ queryKey: qk }); }} />
         </Card>
       )}
@@ -192,12 +195,12 @@ function Batches() {
   return (
     <Page title="Payment batches" actions={<ReasonAction label="Create batch from approved invoices" variant="primary" onSubmit={async (reason) => { await http("POST", "/api/ap/batches", { reason }); qc.invalidateQueries(); }} />}>
       <ErrorBox error={q.error} />
-      <table className="min-w-full text-sm"><thead className="text-left text-xs uppercase text-slate-500"><tr><th>#</th><th>Invoices</th><th>Total</th><th>SHA-256</th><th>By</th><th>When</th><th /></tr></thead>
-        <tbody>{q.data?.map((b) => (
-          <tr key={b.id} className="border-t"><td className="py-1">{b.id}</td><td>{b.count}</td><td>{cents(b.total_cents)}</td><td className="font-mono text-xs">{b.sha256.slice(0, 16)}…</td><td>{b.created_by}</td><td>{dt(b.created_at)}</td>
-            <td><ReasonAction label="Download" onSubmit={async (reason) => { window.location.href = `/api/ap/batches/${b.id}/file?reason=${encodeURIComponent(reason)}`; }} /></td></tr>
-        ))}</tbody>
-      </table>
+      <Table size="small" className="min-w-full text-sm"><TableHeader className="text-left text-xs uppercase text-slate-500"><TableRow><TableHeaderCell>#</TableHeaderCell><TableHeaderCell>Invoices</TableHeaderCell><TableHeaderCell>Total</TableHeaderCell><TableHeaderCell>SHA-256</TableHeaderCell><TableHeaderCell>By</TableHeaderCell><TableHeaderCell>When</TableHeaderCell><TableHeaderCell /></TableRow></TableHeader>
+        <TableBody>{q.data?.map((b) => (
+          <TableRow key={b.id} className="border-t"><TableCell className="py-1">{b.id}</TableCell><TableCell>{b.count}</TableCell><TableCell>{cents(b.total_cents)}</TableCell><TableCell className="font-mono text-xs">{b.sha256.slice(0, 16)}…</TableCell><TableCell>{b.created_by}</TableCell><TableCell>{dt(b.created_at)}</TableCell>
+            <TableCell><ReasonAction label="Download" onSubmit={async (reason) => { window.location.href = `/api/ap/batches/${b.id}/file?reason=${encodeURIComponent(reason)}`; }} /></TableCell></TableRow>
+        ))}</TableBody>
+      </Table>
     </Page>
   );
 }

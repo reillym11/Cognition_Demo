@@ -4,8 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { http } from "../../api/client";
 import { can, useMe } from "../../shell/me";
 import {
-  ApprovalPanel, AuditTimeline, Badge, Card, DataTable, ErrorBox, ExportButton, Field, KeyValues, MaskedField,
-  Page, ReasonAction, Select, dt, inputCls, type Approval,
+  ApprovalPanel, AuditTimeline, Badge, Card, DataTable, ErrorBox, ExportButton, Field, KeyValues, MaskedField, Page, ReasonAction, Select, dt, type Approval, Input, Choice, SearchBox, RecordTabs, Table, TableBody, TableCell, TableRow,
 } from "../../ui/kit";
 import type { ToolRoute } from "../registry";
 
@@ -28,7 +27,7 @@ function Transactions() {
   const [q, setQ] = useState("");
   return (
     <Page title="Transactions">
-      <input aria-label="Search charge or merchant" placeholder="ch_000123 or merchant" className="rounded border px-2 py-1 text-sm" value={q} onChange={(e) => setQ(e.target.value)} />
+      <SearchBox label="Search charge or merchant" placeholder="ch_000123 or merchant" value={q} onChange={(v) => setQ(v)} />
       <DataTable<Txn>
         url="/api/refunds/transactions"
         params={{ q }}
@@ -57,7 +56,7 @@ function TransactionDetail() {
   if (!q.data) return <ErrorBox error={q.error} />;
   const t = q.data.transaction;
   return (
-    <Page title={`Charge ${t.charge_id}`}>
+    <Page subtitle="Transaction" title={`Charge ${t.charge_id}`}>
       <div className="grid gap-4 lg:grid-cols-2">
         <Card title="Transaction">
           <KeyValues rows={[
@@ -77,13 +76,13 @@ function TransactionDetail() {
               extra={
                 <div className="flex gap-2">
                   <Field label="Amount (USD)">
-                    <input className={inputCls} aria-label="Amount (USD)" inputMode="decimal" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
+                    <Input  aria-label="Amount (USD)" inputMode="decimal" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
                   </Field>
                   <Field label="Reason code">
-                    <select className={inputCls} aria-label="Reason code" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })}>
+                    <Choice  aria-label="Reason code" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })}>
                       <option value="">Choose…</option>
                       {q.data.reason_codes.map((c) => <option key={c}>{c}</option>)}
-                    </select>
+                    </Choice>
                   </Field>
                 </div>
               }
@@ -98,15 +97,15 @@ function TransactionDetail() {
         )}
       </div>
       <Card title="Refunds on this charge">
-        <table className="min-w-full text-sm">
-          <tbody>
+        <Table size="small" className="min-w-full text-sm">
+          <TableBody>
             {q.data.refunds.map((r) => (
-              <tr key={r.id} className="cursor-pointer border-t hover:bg-blue-50" onClick={() => nav(`/refunds/requests/${r.id}`)}>
-                <td className="px-2 py-1">#{r.id}</td><td>{r.amount}</td><td><Badge tone={tone(r.status)}>{r.status}</Badge></td><td>{r.requested_by_name}</td><td>{dt(r.created_at)}</td>
-              </tr>
+              <TableRow key={r.id} className="cursor-pointer border-t hover:bg-blue-50" onClick={() => nav(`/refunds/requests/${r.id}`)}>
+                <TableCell className="px-2 py-1">#{r.id}</TableCell><TableCell>{r.amount}</TableCell><TableCell><Badge tone={tone(r.status)}>{r.status}</Badge></TableCell><TableCell>{r.requested_by_name}</TableCell><TableCell>{dt(r.created_at)}</TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
         {q.data.refunds.length === 0 && <p className="text-sm text-slate-500">None yet.</p>}
       </Card>
     </Page>
@@ -125,7 +124,7 @@ function Requests() {
           <Card key={s}><div className="text-xs uppercase text-slate-500">{s}</div><div className="text-lg font-semibold">{stats.data?.[s]?.total ?? "$0.00"}</div><div className="text-xs">{stats.data?.[s]?.count ?? 0} refunds</div></Card>
         ))}
       </div>
-      <div className="flex gap-2">
+      <div className="flex flex-wrap items-end gap-3">
         <Select label="Status" value={f.status} onChange={(v) => setF({ ...f, status: v })} options={[["", "All"], ["pending_approval", "Pending approval"], ["approved", "Approved (executing)"], ["unknown", "Unknown outcome"], ["succeeded", "Succeeded"], ["failed", "Failed"], ["rejected", "Rejected"]]} />
         <Select label="Requester" value={f.mine} onChange={(v) => setF({ ...f, mine: v })} options={[["", "Anyone"], ["1", "Mine"]]} />
       </div>
@@ -157,7 +156,8 @@ function RequestDetail() {
   if (!q.data) return <ErrorBox error={q.error} />;
   const r = q.data.refund;
   return (
-    <Page title={`Refund #${r.id}`} actions={<Badge tone={tone(r.status)}>{r.status}</Badge>}>
+    <Page subtitle="Refund request" title={`Refund #${r.id}`} status={<Badge tone={tone(r.status)}>{r.status}</Badge>}>
+      <RecordTabs tabs={[{ key: "summary", label: "Summary", content: <>
       <Card>
         <KeyValues rows={[
           ["Charge", r.charge_id], ["Merchant", r.merchant], ["Amount", r.amount], ["Reason", `${r.reason_code} — ${r.reason}`],
@@ -169,7 +169,7 @@ function RequestDetail() {
         )}
       </Card>
       {q.data.approval && <Card title="Approval"><ApprovalPanel approval={q.data.approval} invalidate={[key, ["refund-stats"]]} /></Card>}
-      <Card title="Audit trail"><AuditTimeline url={`/api/refunds/requests/${id}/audit`} /></Card>
+      </> }, { key: "audit", label: "Audit history", content: <Card title="Audit trail"><AuditTimeline url={`/api/refunds/requests/${id}/audit`} /></Card> }]} />
     </Page>
   );
 }

@@ -4,8 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { http } from "../../api/client";
 import { can, useMe } from "../../shell/me";
 import {
-  ApprovalPanel, AuditTimeline, Badge, Button, Card, DataTable, ErrorBox, ExportButton, Field, KeyValues, MaskedField,
-  Page, ReasonAction, Select, dt, inputCls, type Approval,
+  ApprovalPanel, AuditTimeline, Badge, Button, Card, DataTable, ErrorBox, ExportButton, Field, KeyValues, MaskedField, Page, ReasonAction, Select, dt, type Approval, Choice, SearchBox, RecordTabs,
 } from "../../ui/kit";
 import type { ToolRoute } from "../registry";
 
@@ -41,12 +40,12 @@ function Queue() {
         {Object.entries(stats.data?.counts ?? {}).map(([s, n]) => <Badge key={s} tone={statusTone(s)}>{s}: {n.toLocaleString()}</Badge>)}
         <Badge tone="red">SLA breached: {stats.data?.sla_breached ?? 0}</Badge>
       </div>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-end gap-3">
         <Select label="Status" value={f.status} onChange={(v) => setF({ ...f, status: v })} options={[["open", "Open"], ["", "All"], ["new", "New"], ["in_review", "In review"], ["info_requested", "Info requested"], ["pending_decision", "Awaiting 2nd decision"], ["approved", "Approved"], ["rejected", "Rejected"], ["auto_cleared", "Auto-cleared"]]} />
         <Select label="Risk" value={f.risk} onChange={(v) => setF({ ...f, risk: v })} options={[["", "Any risk"], ["low", "Low"], ["medium", "Medium"], ["high", "High"]]} />
         <Select label="SLA" value={f.sla} onChange={(v) => setF({ ...f, sla: v })} options={[["", "Any SLA"], ["breached", "Breached"]]} />
         <Select label="Assigned" value={f.assigned} onChange={(v) => setF({ ...f, assigned: v })} options={[["", "Anyone"], ["me", "Mine"], ["unassigned", "Unassigned"]]} />
-        <input aria-label="Search reference" placeholder="KYC-000123" className="rounded border px-2 py-1 text-sm" value={f.q} onChange={(e) => setF({ ...f, q: e.target.value })} />
+        <SearchBox label="Search reference" placeholder="KYC-000123" value={f.q} onChange={(v) => setF({ ...f, q: v })} />
       </div>
       <DataTable<Case>
         url="/api/kyc/cases"
@@ -95,7 +94,8 @@ function CaseDetail() {
   const codes = rec.decision === "approve" ? q.data.reason_codes.approve : q.data.reason_codes.reject;
   const reveal = (field: keyof Case) => <MaskedField field={field} value={String(c[field])} revealUrl={`/api/kyc/cases/${id}/reveal`} canReveal={q.data.can.reveal} />;
   return (
-    <Page title={`Case ${c.ref}`} actions={<Badge tone={statusTone(c.status)}>{c.status}</Badge>}>
+    <Page subtitle="KYC case" title={`Case ${c.ref}`} status={<Badge tone={statusTone(c.status)}>{c.status}</Badge>}>
+      <RecordTabs tabs={[{ key: "summary", label: "Summary", content: <>
       <ErrorBox error={err} />
       <div className="grid gap-4 lg:grid-cols-2">
         <Card title="Applicant (PII masked; reveals are audited)">
@@ -121,16 +121,16 @@ function CaseDetail() {
               extra={
                 <div className="flex gap-2">
                   <Field label="Recommendation">
-                    <select className={inputCls} aria-label="Recommendation" value={rec.decision} onChange={(e) => setRec({ decision: e.target.value, code: "" })}>
+                    <Choice  aria-label="Recommendation" value={rec.decision} onChange={(e) => setRec({ decision: e.target.value, code: "" })}>
                       <option value="approve">Approve</option>
                       <option value="reject">Reject</option>
-                    </select>
+                    </Choice>
                   </Field>
                   <Field label="Reason code">
-                    <select className={inputCls} aria-label="Reason code" value={rec.code} onChange={(e) => setRec({ ...rec, code: e.target.value })}>
+                    <Choice  aria-label="Reason code" value={rec.code} onChange={(e) => setRec({ ...rec, code: e.target.value })}>
                       <option value="">Choose…</option>
                       {codes.map((k) => <option key={k}>{k}</option>)}
-                    </select>
+                    </Choice>
                   </Field>
                 </div>
               }
@@ -144,7 +144,7 @@ function CaseDetail() {
         </div>
       </Card>
       {q.data.approval && <Card title="Second-person decision"><ApprovalPanel approval={q.data.approval} invalidate={[key, ["kyc-stats"]]} /></Card>}
-      <Card title="Audit trail"><AuditTimeline url={`/api/kyc/cases/${id}/audit`} /></Card>
+      </> }, { key: "audit", label: "Audit history", content: <Card title="Audit trail"><AuditTimeline url={`/api/kyc/cases/${id}/audit`} /></Card> }]} />
     </Page>
   );
 }

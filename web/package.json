@@ -11,6 +11,8 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@fluentui/react-components": "^9",
+    "@fluentui/react-icons": "^2",
     "@tanstack/react-query": "^5.104.4",
     "openapi-fetch": "^0.13.8",
     "react": "^18.3.1",

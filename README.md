@@ -63,6 +63,9 @@ Useful commands: `make check` (everything CI runs), `make test`, `make audit-ver
 - Non-engineer change requests: the **Internal tool change request** issue form (label `change-request`) is the
   stand-in for Teams; a Devin Automation picks those issues up. Teams was not installable in this tenant.
 - Measurements: `docs/evidence/` — engineering measurement report: [`docs/evidence/measurement.md`](docs/evidence/measurement.md).
+- UI: Microsoft Fluent UI v9 (`@fluentui/react-components`, MIT), laid out like Power Apps model-driven apps: grouped
+  sitemap navigation, command bar, list views with filters, record pages with Summary / Audit history tabs, and a
+  business-process-flow style stage bar for complaints. It matches the look, not the Power Apps maker experience.
 
 ## Honest limits
 

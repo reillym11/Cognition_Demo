@@ -1,6 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
+import {
+  Badge as FBadge, Button as FButton, Caption1, Card as FCard, CardHeader, Checkbox, Dialog, DialogActions, DialogBody,
+  DialogContent, DialogSurface, DialogTitle, Field as FField, Input, Label, MessageBar, MessageBarBody, Select as FSelect,
+  Spinner, Subtitle2, Tab, TabList, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Textarea, Title3,
+  makeStyles, mergeClasses, tokens, type ButtonProps,
+} from "@fluentui/react-components";
+import { ArrowDownload20Regular, Checkmark12Filled, ChevronLeft20Regular, ChevronRight20Regular, Eye20Regular } from "@fluentui/react-icons";
 import { http } from "../api/client";
+
+/** Fluent UI v9 controls used directly by tool pages. Import from here so every tool looks the same. */
+export { Checkbox, Input, FSelect as Choice, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Textarea };
 
 export function cents(c: number | null | undefined, currency = "USD"): string {
   if (c === null || c === undefined) return "—";
@@ -14,12 +24,53 @@ export function dt(iso: string | null | undefined): string {
   return iso ? new Date(iso).toLocaleString() : "—";
 }
 
-export function Page({ title, actions, children }: { title: string; actions?: ReactNode; children: ReactNode }) {
+const useStyles = makeStyles({
+  commandBar: {
+    display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px", padding: "6px 8px",
+    backgroundColor: tokens.colorNeutralBackground1, borderRadius: tokens.borderRadiusMedium, boxShadow: tokens.shadow2,
+    ":empty": { display: "none" },
+  },
+  header: { display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: "16px", flexWrap: "wrap" },
+  card: { padding: "16px" },
+  danger: {
+    backgroundColor: tokens.colorPaletteRedBackground3, color: tokens.colorNeutralForegroundOnBrand,
+    ":hover": { backgroundColor: tokens.colorPaletteRedForeground1, color: tokens.colorNeutralForegroundOnBrand },
+    ":hover:active": { backgroundColor: tokens.colorPaletteRedForeground1, color: tokens.colorNeutralForegroundOnBrand },
+  },
+  tableWrap: { backgroundColor: tokens.colorNeutralBackground1, borderRadius: tokens.borderRadiusMedium, boxShadow: tokens.shadow2, overflowX: "auto" },
+  rowClick: { cursor: "pointer" },
+  footer: {
+    display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 12px",
+    borderTop: `1px solid ${tokens.colorNeutralStroke2}`, color: tokens.colorNeutralForeground2, fontSize: tokens.fontSizeBase200,
+  },
+  muted: { color: tokens.colorNeutralForeground3 },
+  stage: {
+    display: "flex", alignItems: "center", gap: "6px", minWidth: "120px", padding: "6px 22px 6px 24px",
+    clipPath: "polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%, 12px 50%)",
+    backgroundColor: tokens.colorNeutralBackground3, color: tokens.colorNeutralForeground2, fontSize: tokens.fontSizeBase200,
+  },
+  stageFirst: { clipPath: "polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%)", paddingLeft: "12px" },
+  stageDone: { backgroundColor: tokens.colorPaletteGreenBackground2, color: tokens.colorPaletteGreenForeground2 },
+  stageActive: { backgroundColor: tokens.colorBrandBackground, color: tokens.colorNeutralForegroundOnBrand, fontWeight: tokens.fontWeightSemibold },
+  timelineItem: { borderLeft: `2px solid ${tokens.colorBrandStroke2}`, paddingLeft: "12px", position: "relative" },
+  code: { fontFamily: tokens.fontFamilyMonospace, fontSize: tokens.fontSizeBase200, color: tokens.colorNeutralForeground3 },
+});
+
+/**
+ * Power Apps model-driven layout: command bar on top, then the page/record header, then content.
+ * `status` sits on the right of the header like a record's status reason.
+ */
+export function Page({ title, subtitle, actions, status, children }: { title: string; subtitle?: string; actions?: ReactNode; status?: ReactNode; children: ReactNode }) {
+  const s = useStyles();
   return (
     <section className="space-y-4">
-      <div className="flex items-center justify-between gap-4">
-        <h1 className="text-xl font-semibold">{title}</h1>
-        <div className="flex gap-2">{actions}</div>
+      {actions && <div role="toolbar" aria-label="Commands" className={s.commandBar}>{actions}</div>}
+      <div className={s.header}>
+        <div>
+          {subtitle && <Caption1 className={s.muted}>{subtitle}</Caption1>}
+          <Title3 as="h1" block>{title}</Title3>
+        </div>
+        {status && <div className="flex items-center gap-2">{status}</div>}
       </div>
       {children}
     </section>
@@ -27,61 +78,75 @@ export function Page({ title, actions, children }: { title: string; actions?: Re
 }
 
 export function Card({ title, children }: { title?: string; children: ReactNode }) {
+  const s = useStyles();
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-      {title && <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-600">{title}</h2>}
-      {children}
+    <FCard className={s.card}>
+      {title && <CardHeader header={<Subtitle2 as="h2">{title}</Subtitle2>} />}
+      <div>{children}</div>
+    </FCard>
+  );
+}
+
+/** Record pages: Summary / Audit history tabs like a model-driven form. */
+export function RecordTabs({ tabs }: { tabs: { key: string; label: string; content: ReactNode }[] }) {
+  const [sel, setSel] = useState(tabs[0]?.key);
+  const cur = tabs.find((t) => t.key === sel) ?? tabs[0];
+  return (
+    <div className="space-y-4">
+      <TabList selectedValue={cur?.key} onTabSelect={(_, d) => setSel(String(d.value))}>
+        {tabs.map((t) => <Tab key={t.key} value={t.key}>{t.label}</Tab>)}
+      </TabList>
+      <div role="tabpanel" className="space-y-4">{cur?.content}</div>
     </div>
   );
 }
 
-export function Badge({ children, tone = "slate" }: { children: ReactNode; tone?: "slate" | "green" | "red" | "amber" | "blue" }) {
-  const tones = {
-    slate: "bg-slate-100 text-slate-700",
-    green: "bg-green-100 text-green-800",
-    red: "bg-red-100 text-red-800",
-    amber: "bg-amber-100 text-amber-900",
-    blue: "bg-blue-100 text-blue-800",
-  };
-  return <span className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${tones[tone]}`}>{children}</span>;
+type Tone = "slate" | "green" | "red" | "amber" | "blue";
+const TONE_COLOR = { slate: "informative", green: "success", red: "danger", amber: "warning", blue: "brand" } as const;
+
+export function Badge({ children, tone = "slate" }: { children: ReactNode; tone?: Tone }) {
+  return <FBadge appearance="tint" shape="rounded" color={TONE_COLOR[tone]}>{children}</FBadge>;
 }
 
-export function Button(props: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "danger" }) {
-  const { variant = "secondary", className = "", ...rest } = props;
-  const v = {
-    primary: "bg-blue-700 text-white hover:bg-blue-800",
-    secondary: "border border-slate-300 bg-white hover:bg-slate-50",
-    danger: "bg-red-700 text-white hover:bg-red-800",
-  }[variant];
-  return <button {...rest} className={`rounded px-3 py-1.5 text-sm font-medium disabled:opacity-50 ${v} ${className}`} />;
+type BtnProps = {
+  variant?: "primary" | "secondary" | "danger" | "subtle";
+  children?: ReactNode;
+  onClick?: React.MouseEventHandler<HTMLButtonElement>;
+  disabled?: boolean;
+  icon?: ButtonProps["icon"];
+  size?: ButtonProps["size"];
+  className?: string;
+  title?: string;
+  "aria-label"?: string;
+  "data-testid"?: string;
+};
+
+export function Button({ variant = "secondary", className, ...rest }: BtnProps) {
+  const s = useStyles();
+  const appearance = variant === "danger" ? "primary" : variant;
+  return <FButton {...rest} appearance={appearance} className={mergeClasses(variant === "danger" && s.danger, className)} />;
 }
 
 export function ErrorBox({ error }: { error: unknown }) {
   if (!error) return null;
   return (
-    <div role="alert" className="rounded border border-red-300 bg-red-50 p-2 text-sm text-red-800">
-      {error instanceof Error ? error.message : String(error)}
+    <div role="alert">
+      <MessageBar intent="error"><MessageBarBody>{error instanceof Error ? error.message : String(error)}</MessageBarBody></MessageBar>
     </div>
   );
 }
 
-export function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <label className="block text-sm">
-      <span className="mb-1 block font-medium text-slate-700">{label}</span>
-      {children}
-    </label>
-  );
+export function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) {
+  return <FField label={label} hint={hint}>{children}</FField>;
 }
 
-export const inputCls = "w-full rounded border border-slate-300 px-2 py-1.5 text-sm";
-
 export function KeyValues({ rows }: { rows: [string, ReactNode][] }) {
+  const s = useStyles();
   return (
-    <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm">
+    <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2 text-sm">
       {rows.map(([k, v]) => (
         <div key={k} className="contents">
-          <dt className="text-slate-500">{k}</dt>
+          <dt className={s.muted}>{k}</dt>
           <dd>{v}</dd>
         </div>
       ))}
@@ -91,7 +156,7 @@ export function KeyValues({ rows }: { rows: [string, ReactNode][] }) {
 
 export type Column<T> = { key: string; label: string; render?: (row: T) => ReactNode; sortable?: boolean };
 
-/** Server-side paginated/sorted table. Filters live in the caller and are part of `params`. */
+/** Server-side paginated/sorted list view. Filters live in the caller and are part of `params`. */
 export function DataTable<T extends { id: number | string }>({
   url, params, columns, onRowClick, rowTestId,
 }: {
@@ -101,49 +166,47 @@ export function DataTable<T extends { id: number | string }>({
   onRowClick?: (row: T) => void;
   rowTestId?: string;
 }) {
+  const s = useStyles();
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState<string | undefined>(undefined);
   const qs = new URLSearchParams();
   Object.entries({ ...params, page, sort }).forEach(([k, v]) => v !== undefined && v !== "" && qs.set(k, String(v)));
   const q = useQuery({ queryKey: [url, qs.toString()], queryFn: () => http<{ total: number; items: T[]; page_size: number }>("GET", `${url}?${qs}`) });
   const pages = q.data ? Math.max(1, Math.ceil(q.data.total / q.data.page_size)) : 1;
+  const dir = (k: string) => (sort === k ? "ascending" : sort === `-${k}` ? "descending" : undefined);
   return (
-    <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+    <div className={s.tableWrap}>
       <ErrorBox error={q.error} />
-      <table className="min-w-full text-sm">
-        <thead className="bg-slate-100 text-left text-xs uppercase text-slate-600">
-          <tr>
-            {columns.map((c) => (
-              <th key={c.key} className="px-3 py-2" scope="col">
-                {c.sortable ? (
-                  <button className="uppercase" onClick={() => setSort(sort === c.key ? `-${c.key}` : c.key)}>
-                    {c.label} {sort === c.key ? "▲" : sort === `-${c.key}` ? "▼" : ""}
-                  </button>
-                ) : (
-                  c.label
-                )}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
+      <Table size="small" aria-label="Records">
+        <TableHeader>
+          <TableRow>
+            {columns.map((c) =>
+              c.sortable ? (
+                <TableHeaderCell key={c.key} sortable sortDirection={dir(c.key)} onClick={() => setSort(sort === c.key ? `-${c.key}` : c.key)}>
+                  {c.label}
+                </TableHeaderCell>
+              ) : (
+                <TableHeaderCell key={c.key}>{c.label}</TableHeaderCell>
+              ),
+            )}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {q.data?.items.map((row) => (
-            <tr key={row.id} data-testid={rowTestId} className={`border-t border-slate-100 ${onRowClick ? "cursor-pointer hover:bg-blue-50" : ""}`} onClick={() => onRowClick?.(row)}>
+            <TableRow key={row.id} data-testid={rowTestId} className={onRowClick ? s.rowClick : undefined} onClick={() => onRowClick?.(row)}>
               {columns.map((c) => (
-                <td key={c.key} className="px-3 py-2">
-                  {c.render ? c.render(row) : String((row as Record<string, unknown>)[c.key] ?? "—")}
-                </td>
+                <TableCell key={c.key}>{c.render ? c.render(row) : String((row as Record<string, unknown>)[c.key] ?? "—")}</TableCell>
               ))}
-            </tr>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
-      <div className="flex items-center justify-between border-t border-slate-100 px-3 py-2 text-sm text-slate-600">
-        <span data-testid="table-total">{q.isLoading ? "Loading…" : `${q.data?.total.toLocaleString() ?? 0} results`}</span>
-        <span className="flex items-center gap-2">
-          <Button disabled={page <= 1} onClick={() => setPage(page - 1)}>Prev</Button>
-          <span>Page {page} / {pages}</span>
-          <Button disabled={page >= pages} onClick={() => setPage(page + 1)}>Next</Button>
+        </TableBody>
+      </Table>
+      <div className={s.footer}>
+        <span data-testid="table-total">{q.isLoading ? "Loading…" : `${q.data?.total.toLocaleString() ?? 0} records`}</span>
+        <span className="flex items-center gap-1">
+          <FButton appearance="subtle" size="small" icon={<ChevronLeft20Regular />} aria-label="Previous page" disabled={page <= 1} onClick={() => setPage(page - 1)} />
+          <span>Page {page} of {pages}</span>
+          <FButton appearance="subtle" size="small" icon={<ChevronRight20Regular />} aria-label="Next page" disabled={page >= pages} onClick={() => setPage(page + 1)} />
         </span>
       </div>
     </div>
@@ -152,55 +215,62 @@ export function DataTable<T extends { id: number | string }>({
 
 /** Every decision needs a reason: one dialog used by all tools. */
 export function ReasonAction({
-  label, variant = "secondary", onSubmit, extra, disabled, testId,
+  label, variant = "secondary", onSubmit, extra, disabled, testId, icon,
 }: {
   label: string;
-  variant?: "primary" | "secondary" | "danger";
+  variant?: "primary" | "secondary" | "danger" | "subtle";
   onSubmit: (reason: string) => Promise<unknown>;
   extra?: ReactNode;
   disabled?: boolean;
   testId?: string;
+  icon?: ButtonProps["icon"];
 }) {
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [err, setErr] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
-  if (!open)
-    return (
-      <Button variant={variant} disabled={disabled} onClick={() => setOpen(true)} data-testid={testId}>
+  return (
+    <>
+      <Button variant={variant} disabled={disabled} icon={icon} onClick={() => setOpen(true)} data-testid={testId}>
         {label}
       </Button>
-    );
-  return (
-    <div className="w-full space-y-2 rounded border border-slate-300 bg-slate-50 p-3">
-      {extra}
-      <Field label={`Reason for "${label}" (required)`}>
-        <textarea className={inputCls} rows={2} value={reason} onChange={(e) => setReason(e.target.value)} />
-      </Field>
-      <ErrorBox error={err} />
-      <div className="flex gap-2">
-        <Button
-          variant={variant}
-          disabled={busy || reason.trim().length < 3}
-          onClick={async () => {
-            setBusy(true);
-            setErr(null);
-            try {
-              await onSubmit(reason);
-              setOpen(false);
-              setReason("");
-            } catch (e) {
-              setErr(e);
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          Confirm {label}
-        </Button>
-        <Button onClick={() => setOpen(false)}>Cancel</Button>
-      </div>
-    </div>
+      <Dialog open={open} onOpenChange={(_, d) => { setOpen(d.open); if (!d.open) setErr(null); }}>
+        <DialogSurface>
+          <DialogBody>
+            <DialogTitle>{label}</DialogTitle>
+            <DialogContent className="space-y-3">
+              {extra}
+              <FField label={`Reason for "${label}"`} required hint="Recorded in the audit trail.">
+                <Textarea rows={3} value={reason} onChange={(_, d) => setReason(d.value)} />
+              </FField>
+              <ErrorBox error={err} />
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setOpen(false)}>Cancel</Button>
+              <Button
+                variant={variant === "danger" ? "danger" : "primary"}
+                disabled={busy || reason.trim().length < 3}
+                onClick={async () => {
+                  setBusy(true);
+                  setErr(null);
+                  try {
+                    await onSubmit(reason);
+                    setOpen(false);
+                    setReason("");
+                  } catch (e) {
+                    setErr(e);
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                Confirm {label}
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
+    </>
   );
 }
 
@@ -211,7 +281,9 @@ export type Approval = {
   can_decide?: boolean; cannot_decide_reason?: string; note: string; payload: Record<string, unknown>; subject_type: string; subject_id: string;
 };
 
+/** Styled like a Power Automate approval: request, stages, responses, Approve / Reject. */
 export function ApprovalPanel({ approval, invalidate }: { approval: Approval; invalidate: string[][] }) {
+  const s = useStyles();
   const qc = useQueryClient();
   const decide = async (decision: string, reason: string) => {
     await http("POST", `/api/approvals/${approval.id}/decide`, { decision, reason });
@@ -220,25 +292,20 @@ export function ApprovalPanel({ approval, invalidate }: { approval: Approval; in
     qc.invalidateQueries({ predicate: (q) => String(q.queryKey[0]).endsWith("/audit") });
   };
   const tone = approval.status === "approved" ? "green" : approval.status === "rejected" ? "red" : "amber";
+  const stageState = (i: number) => (i < approval.current_stage || approval.status === "approved" ? "done" : i === approval.current_stage && approval.status === "open" ? "active" : "todo");
   return (
-    <div className="space-y-2 rounded border border-slate-200 p-3" data-testid="approval-panel">
-      <div className="flex items-center justify-between">
+    <div className="space-y-3" data-testid="approval-panel">
+      <div className="flex items-center justify-between gap-2">
         <strong className="text-sm">{approval.title}</strong>
         <Badge tone={tone}>{approval.status}</Badge>
       </div>
-      <p className="text-xs text-slate-600">
+      <Caption1 className={s.muted} block>
         Requested by {approval.requested_by_name} · {dt(approval.requested_at)} · “{approval.request_reason}”
-      </p>
-      {approval.note && <p className="text-xs text-slate-600">{approval.note}</p>}
-      <ol className="flex flex-wrap gap-2 text-xs">
-        {approval.stages.map((s, i) => (
-          <li key={i} className={`rounded px-2 py-1 ${i < approval.current_stage || approval.status === "approved" ? "bg-green-100" : i === approval.current_stage && approval.status === "open" ? "bg-amber-100" : "bg-slate-100"}`}>
-            {i + 1}. {s.name}
-          </li>
-        ))}
-      </ol>
+      </Caption1>
+      {approval.note && <Caption1 className={s.muted} block>{approval.note}</Caption1>}
+      <StageBar stages={approval.stages.map((st, i) => ({ key: String(i), label: `${i + 1}. ${st.name}`, state: stageState(i) }))} current="" testId="approval-stages" />
       {approval.decisions.map((d, i) => (
-        <p key={i} className="text-xs">
+        <p key={i} className="text-sm">
           <Badge tone={d.decision === "approve" ? "green" : "red"}>{d.decision}</Badge> {d.decided_by_name}: “{d.reason}”
         </p>
       ))}
@@ -249,7 +316,7 @@ export function ApprovalPanel({ approval, invalidate }: { approval: Approval; in
             <ReasonAction label="Reject" variant="danger" testId="reject" onSubmit={(r) => decide("reject", r)} />
           </div>
         ) : (
-          <p className="text-xs text-slate-500" data-testid="cannot-decide">You can't decide this: {approval.cannot_decide_reason}</p>
+          <Caption1 className={s.muted} block data-testid="cannot-decide">You can't decide this: {approval.cannot_decide_reason}</Caption1>
         ))}
     </div>
   );
@@ -257,22 +324,25 @@ export function ApprovalPanel({ approval, invalidate }: { approval: Approval; in
 
 export type AuditItem = { seq: number; occurred_at: string; actor_name: string; action: string; reason: string | null; before: unknown; after: unknown };
 
+/** Activity timeline. */
 export function AuditTimeline({ url }: { url: string }) {
+  const s = useStyles();
   const q = useQuery({ queryKey: [url], queryFn: () => http<AuditItem[]>("GET", url) });
   return (
-    <ol className="space-y-2 text-sm" data-testid="audit-timeline">
+    <ol className="space-y-3 text-sm" data-testid="audit-timeline">
       <ErrorBox error={q.error} />
+      {q.isLoading && <Spinner size="tiny" />}
       {q.data?.map((e) => (
-        <li key={e.seq} className="border-l-2 border-slate-300 pl-3">
-          <div className="flex justify-between">
-            <span className="font-medium">{e.action}</span>
-            <span className="text-xs text-slate-500">{dt(e.occurred_at)}</span>
+        <li key={e.seq} className={s.timelineItem}>
+          <div className="flex justify-between gap-2">
+            <span className="font-semibold">{e.action}</span>
+            <Caption1 className={s.muted}>{dt(e.occurred_at)}</Caption1>
           </div>
-          <div className="text-xs text-slate-600">
+          <div className={s.muted}>
             {e.actor_name}
             {e.reason ? ` — “${e.reason}”` : ""}
           </div>
-          {e.after != null && <code className="block truncate text-xs text-slate-500">{JSON.stringify(e.after)}</code>}
+          {e.after != null && <code className={mergeClasses("block truncate", s.code)}>{JSON.stringify(e.after)}</code>}
         </li>
       ))}
     </ol>
@@ -281,6 +351,7 @@ export function AuditTimeline({ url }: { url: string }) {
 
 /** Masked by default; reveal calls an audited endpoint and shows the value until navigation. */
 export function MaskedField({ value, revealUrl, canReveal, field }: { value: string | null; revealUrl: string; canReveal: boolean; field: string }) {
+  const s = useStyles();
   const [shown, setShown] = useState<string | null>(null);
   const m = useMutation({
     mutationFn: (reason: string) => http<{ value: string }>("POST", revealUrl, { field, reason }),
@@ -288,9 +359,9 @@ export function MaskedField({ value, revealUrl, canReveal, field }: { value: str
   });
   return (
     <span className="inline-flex flex-wrap items-center gap-2" data-testid={`masked-${field}`}>
-      <code>{shown ?? value ?? "—"}</code>
+      <code className={s.code}>{shown ?? value ?? "—"}</code>
       {canReveal && shown === null && value && (
-        <ReasonAction label="Reveal" onSubmit={(r) => m.mutateAsync(r)} testId={`reveal-${field}`} />
+        <ReasonAction label="Reveal" variant="subtle" icon={<Eye20Regular />} onSubmit={(r) => m.mutateAsync(r)} testId={`reveal-${field}`} />
       )}
     </span>
   );
@@ -300,6 +371,8 @@ export function ExportButton({ url, params }: { url: string; params: Record<stri
   return (
     <ReasonAction
       label="Export CSV"
+      variant="subtle"
+      icon={<ArrowDownload20Regular />}
       testId="export"
       onSubmit={async (reason) => {
         const qs = new URLSearchParams();
@@ -316,28 +389,48 @@ export function ExportButton({ url, params }: { url: string; params: Record<stri
   );
 }
 
-export function StageBar({ stages, current }: { stages: { key: string; label: string }[]; current: string }) {
-  const idx = stages.findIndex((s) => s.key === current);
+/** Business-process-flow style stage bar (chevrons; completed stages ticked). */
+export function StageBar({ stages, current, testId = "stage-bar" }: { stages: { key: string; label: string; state?: "done" | "active" | "todo" }[]; current: string; testId?: string }) {
+  const s = useStyles();
+  const idx = stages.findIndex((x) => x.key === current);
   return (
-    <ol className="flex flex-wrap gap-1 text-xs" data-testid="stage-bar">
-      {stages.map((s, i) => (
-        <li key={s.key} className={`rounded px-2 py-1 ${i < idx ? "bg-green-100 text-green-900" : i === idx ? "bg-blue-700 text-white" : "bg-slate-100 text-slate-600"}`}>
-          {s.label}
-        </li>
-      ))}
+    <ol className="flex flex-wrap gap-0.5" data-testid={testId} aria-label="Stages">
+      {stages.map((x, i) => {
+        const state = x.state ?? (i < idx ? "done" : i === idx ? "active" : "todo");
+        return (
+          <li
+            key={x.key}
+            aria-current={state === "active" ? "step" : undefined}
+            className={mergeClasses(s.stage, i === 0 && s.stageFirst, state === "done" && s.stageDone, state === "active" && s.stageActive)}
+          >
+            {state === "done" && <Checkmark12Filled />}
+            {x.label}
+          </li>
+        );
+      })}
     </ol>
   );
 }
 
+/** Compact view filter (label above a Fluent select), used above list views. */
 export function Select({ value, onChange, options, label }: { value: string; onChange: (v: string) => void; options: [string, string][]; label: string }) {
   return (
-    <label className="text-sm">
-      <span className="sr-only">{label}</span>
-      <select aria-label={label} className="rounded border border-slate-300 px-2 py-1.5 text-sm" value={value} onChange={(e) => onChange(e.target.value)}>
+    <div className="flex flex-col gap-0.5">
+      <Label size="small">{label}</Label>
+      <FSelect size="small" aria-label={label} value={value} onChange={(_, d) => onChange(d.value)}>
         {options.map(([v, l]) => (
           <option key={v} value={v}>{l}</option>
         ))}
-      </select>
-    </label>
+      </FSelect>
+    </div>
+  );
+}
+
+export function SearchBox({ label, placeholder, value, onChange }: { label: string; placeholder?: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <Label size="small">{label}</Label>
+      <Input size="small" aria-label={label} placeholder={placeholder} value={value} onChange={(_, d) => onChange(d.value)} />
+    </div>
   );
 }

@@ -1,3 +1,4 @@
+import { FluentProvider, webLightTheme } from "@fluentui/react-components";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React from "react";
 import ReactDOM from "react-dom/client";
@@ -9,10 +10,12 @@ const qc = new QueryClient({ defaultOptions: { queries: { retry: false, refetchO
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <QueryClientProvider client={qc}>
-      <BrowserRouter>
-        <App />
-      </BrowserRouter>
-    </QueryClientProvider>
+    <FluentProvider theme={webLightTheme} style={{ minHeight: "100vh", backgroundColor: webLightTheme.colorNeutralBackground2 }}>
+      <QueryClientProvider client={qc}>
+        <BrowserRouter>
+          <App />
+        </BrowserRouter>
+      </QueryClientProvider>
+    </FluentProvider>
   </React.StrictMode>,
 );
