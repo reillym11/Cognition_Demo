@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     files_dir: str = "var/files"
     rate_limit_default: str = "300/minute"
     rate_limit_sensitive: str = "30/minute"
+    # Per client IP for /api/auth/login and /callback. Needs the real client IP (uvicorn --proxy-headers with
+    # --forwarded-allow-ips set to the proxy only), otherwise everyone behind the proxy shares one bucket.
+    rate_limit_signin: str = "120/minute"
+    # Global cap on unexpired OidcLoginState rows; /login refuses new sign-ins (signin_busy) above it.
+    oidc_pending_login_cap: int = 5000
     worker_poll_seconds: float = 0.5
     disable_scheduler: bool = False
 

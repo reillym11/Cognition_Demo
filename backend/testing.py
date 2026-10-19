@@ -2,7 +2,7 @@ import json
 import os
 from collections.abc import Callable, Iterator
 
-__all__ = ["PERSONAS", "SUPER", "app", "clean_db", "directory", "login", "principal"]
+__all__ = ["PERSONAS", "SUPER", "app", "clean_db", "directory", "login", "principal", "reset_rate_limits"]
 from pathlib import Path
 
 os.environ.setdefault("ITP_DATABASE_URL", "postgresql+psycopg://itp_app:itp_app@localhost:54320/itp_test")

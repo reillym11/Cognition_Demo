@@ -16,6 +16,7 @@ const LOGIN_ERRORS: Record<string, string> = {
     "Your token has no app roles and a groups overage claim (more than 200 groups). Ask IT to assign an Entra app role for this application.",
   no_roles: "You have no role in this application.",
   state_mismatch: "Sign-in session mismatch. Please try again.",
+  signin_busy: "Too many sign-ins are in progress. Please try again in a few minutes.",
 };
 
 const ICONS: [string, ReactElement][] = [

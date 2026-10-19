@@ -9,7 +9,7 @@ from app.foundation.authz import check_routes, require
 from app.foundation.db import session_scope
 from app.foundation.errors import Conflict, Forbidden, Invalid
 from app.foundation.money import Money
-from testing import principal
+from testing import PERSONAS, principal
 
 
 def test_host_has_no_unprotected_routes(app):
@@ -510,25 +510,91 @@ def test_rate_limit_key_ignores_forged_session_cookies(login):
     assert client_key(req(None)) == "ip:10.0.0.7"
     assert client_key(req("forged-aaaaaaaaaaaaaaa")) == "ip:10.0.0.7"
     assert client_key(req("forged-bbbbbbbbbbbbbbb")) == "ip:10.0.0.7"
-    token = login("ana.analyst").cookies.get(auth.SESSION_COOKIE)
-    assert client_key(req(token)) == f"session:{auth._hash(token)}"
+    first = login("ana.analyst").cookies.get(auth.SESSION_COOKIE)
+    second = login("ana.analyst").cookies.get(auth.SESSION_COOKIE)
+    assert first != second
+    oid = PERSONAS["ana.analyst"]["oid"]
+    assert client_key(req(first)) == client_key(req(second)) == f"user:{oid}"
 
 
 def test_sensitive_routes_carry_sensitive_rate_limit(app):
     from app.foundation.authz import _api_routes
-    from app.foundation.ratelimit import _sensitive
+    from app.foundation.ratelimit import _sensitive, _signin
 
-    sensitive = [
-        r
-        for r in _api_routes(app.routes)
-        if (
-            r.path.endswith(("/reveal", "/export", ".csv"))
-            or r.path in {"/api/auth/login", "/api/auth/callback"}
-        )
-    ]
-    assert len(sensitive) >= 9
-    missing = [r.path for r in sensitive if _sensitive not in {d.call for d in r.dependant.dependencies}]
-    assert missing == []
+    def deps(r):
+        return {d.call for d in r.dependant.dependencies}
+
+    routes = list(_api_routes(app.routes))
+    sensitive = [r for r in routes if r.path.endswith(("/reveal", "/export", ".csv"))]
+    assert len(sensitive) >= 7
+    assert [r.path for r in sensitive if _sensitive not in deps(r)] == []
+    signin = [r for r in routes if r.path in {"/api/auth/login", "/api/auth/callback"}]
+    assert len(signin) == 2
+    assert all(_signin in deps(r) and _sensitive not in deps(r) for r in signin)
+
+
+def test_sensitive_rate_limit_is_per_user_across_sessions(login, monkeypatch):
+    from app.foundation.settings import get_settings
+
+    monkeypatch.setattr(get_settings(), "rate_limit_sensitive", "2/minute")
+    body = {"field": "email", "reason": "check"}
+    a, b, other = login("ana.analyst"), login("ana.analyst"), login("avery.analyst")
+    assert a.post("/api/kyc/cases/999999/reveal", json=body).status_code != 429
+    assert b.post("/api/kyc/cases/999999/reveal", json=body).status_code != 429
+    assert b.post("/api/kyc/cases/999999/reveal", json=body).json()["code"] == "rate_limited"
+    assert a.post("/api/kyc/cases/999999/reveal", json=body).status_code == 429
+    assert other.post("/api/kyc/cases/999999/reveal", json=body).status_code != 429
+
+
+@pytest.fixture
+def fake_oidc_metadata(monkeypatch):
+    import time
+
+    from app.foundation import auth
+
+    meta = {"authorization_endpoint": "http://idp.test/authorize", "token_endpoint": "http://idp.test/token"}
+    monkeypatch.setattr(auth, "_oidc_cache", {"meta": meta, "jwks": None, "at": time.time()})
+
+
+def test_signin_limit_is_separate_from_sensitive_and_per_client_ip(app, fake_oidc_metadata, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from app.foundation.settings import get_settings
+
+    monkeypatch.setattr(get_settings(), "rate_limit_sensitive", "1/minute")
+    monkeypatch.setattr(get_settings(), "rate_limit_signin", "3/minute")
+    attacker = TestClient(app, client=("10.0.0.66", 1000), follow_redirects=False)
+    codes = [attacker.get("/api/auth/login").status_code for _ in range(4)]
+    assert codes == [303, 303, 303, 429]
+    assert attacker.get("/api/auth/callback?code=x&state=y").status_code == 303
+    victim = TestClient(app, client=("10.0.0.77", 1000), follow_redirects=False)
+    assert victim.get("/api/auth/login").status_code == 303
+
+
+def test_login_caps_pending_states_and_replaces_same_browser_state(app, fake_oidc_metadata, monkeypatch):
+    from fastapi.testclient import TestClient
+    from sqlalchemy import func, select
+
+    from app.foundation import auth
+    from app.foundation.models import OidcLoginState
+    from app.foundation.settings import get_settings
+
+    def pending() -> int:
+        with session_scope() as db:
+            return db.scalar(select(func.count()).select_from(OidcLoginState)) or 0
+
+    browser = TestClient(app, follow_redirects=False)
+    for _ in range(3):
+        assert browser.get("/api/auth/login").status_code == 303
+        assert browser.cookies.get(auth.LOGIN_BINDING_COOKIE, path="/api/auth")
+    assert pending() == 1
+
+    monkeypatch.setattr(get_settings(), "oidc_pending_login_cap", 2)
+    TestClient(app, follow_redirects=False).get("/api/auth/login")
+    assert pending() == 2
+    r = TestClient(app, follow_redirects=False).get("/api/auth/login")
+    assert r.status_code == 303 and r.headers["location"].endswith("/login?error=signin_busy")
+    assert pending() == 2
 
 
 def test_sensitive_rate_limit_returns_429(login, monkeypatch):

@@ -1,11 +1,15 @@
 """Shared SlowAPI limiter.
 
-Requests are keyed on the client IP, or on the session id hash once that session has been validated against
-the DB. Raw cookie bytes are never used as a key, so rotating a forged cookie cannot mint fresh buckets.
+Requests are keyed on the client IP, or on the user (`oid`) once the session cookie has been validated against
+the DB. Keying on the user rather than the session means opening more sessions does not add budget. Raw cookie
+bytes are never used as a key, so rotating a forged cookie cannot mint fresh buckets.
+
+The sign-in routes have their own, looser per-IP tier (`signin_rate_limit`) so an anonymous client cannot use
+up a budget that every not-yet-signed-in user behind the same address depends on.
 """
 
 from fastapi import Depends, Request
-from limits import parse
+from limits import RateLimitItem, parse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
@@ -16,21 +20,30 @@ from app.foundation.settings import get_settings
 def client_key(request: Request) -> str:
     from app.foundation import auth  # auth imports this module for its login routes
 
-    sid = auth.valid_session_id(request)
-    return f"session:{sid}" if sid else f"ip:{get_remote_address(request)}"
+    oid = auth.valid_session_oid(request)
+    return f"user:{oid}" if oid else f"ip:{get_remote_address(request)}"
 
 
 limiter = Limiter(key_func=client_key, default_limits=[get_settings().rate_limit_default])
 
 
-def _sensitive(request: Request) -> None:
+def _hit(request: Request, tier: str, limit: RateLimitItem, key: str) -> None:
     endpoint = request.scope.get("endpoint")
     scope = f"{endpoint.__module__}.{endpoint.__qualname__}" if endpoint else "unrouted"
-    limit = parse(get_settings().rate_limit_sensitive)
-    if not limiter.limiter.hit(limit, "sensitive", scope, client_key(request)):
+    if not limiter.limiter.hit(limit, tier, scope, key):
         raise DomainError("rate limit exceeded", code="rate_limited", status_code=429)
 
 
-# Applies settings.rate_limit_sensitive per client per route. Use on reveal, export and login routes:
+def _sensitive(request: Request) -> None:
+    _hit(request, "sensitive", parse(get_settings().rate_limit_sensitive), client_key(request))
+
+
+def _signin(request: Request) -> None:
+    _hit(request, "signin", parse(get_settings().rate_limit_signin), f"ip:{get_remote_address(request)}")
+
+
+# Applies settings.rate_limit_sensitive per user (or IP if signed out) per route. Use on reveal and export routes:
 #   @router.post("/x/{id}/reveal", dependencies=[sensitive_rate_limit])
 sensitive_rate_limit = Depends(_sensitive)
+# Applies settings.rate_limit_signin per client IP per route. Only for the public OIDC sign-in routes.
+signin_rate_limit = Depends(_signin)
