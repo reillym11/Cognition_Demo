@@ -2,10 +2,14 @@ import base64
 import csv
 import io
 import json
+import struct
+import zlib
+from types import SimpleNamespace
 
 import httpx
 import pikepdf
 import pytest
+from fastapi.testclient import TestClient
 from reportlab.pdfgen import canvas
 from sqlalchemy import select
 
@@ -14,11 +18,12 @@ from app.foundation.datacls import fingerprint_record, mask_record
 from app.foundation.db import session_scope
 from app.foundation.errors import Conflict, Forbidden, Invalid
 from app.foundation.extraction import ExtractionLimitExceeded, PdfTextExtractor, get_extractor, set_extractor
-from app.foundation.models import ApprovalRequest
+from app.foundation.models import ApprovalRequest, AuditEvent
 from app.foundation.money import parse_cents
 from app.foundation.settings import get_settings
 from app.tools.ap import pdfgen, service
 from app.tools.ap.models import BankChange, Invoice, PurchaseOrder, Vendor
+from mocks import app as mocks
 from testing import principal
 
 ACCT, ROUTING = "1234567890", "021000021"
@@ -351,6 +356,86 @@ def test_file_validation_fails_closed_on_damaged_or_encrypted_pdf():
     assert e.value.code == "file_malformed"
 
 
+def objstm_pdf(pad_mb: int, catalog_in_stream: bool = False) -> bytes:
+    """Tiny PDF whose /ObjStm inflates by pad_mb MB; optionally hides an /OpenAction catalog after the padding."""
+    pad = pad_mb << 20
+    if catalog_in_stream:
+        header, num, tail = (
+            b"1 %d " % pad,
+            1,
+            b"<< /Type /Catalog /Pages 2 0 R /OpenAction << /S /JavaScript >> >>",
+        )
+    else:
+        header, num, tail = b"2 %d " % pad, 2, PAGES[0]
+    co = zlib.compressobj(9)
+    stream = bytearray(co.compress(header))
+    for _ in range(pad_mb):
+        stream += co.compress(b" " * (1 << 20))
+    stream += co.compress(tail) + co.flush()
+    out, offs = bytearray(b"%PDF-1.7\n"), {}
+
+    def obj(n: int, body: bytes) -> None:
+        offs[n] = len(out)
+        out.extend(b"%d 0 obj\n" % n + body + b"\nendobj\n")
+
+    obj(
+        2 if catalog_in_stream else 1, PAGES[0] if catalog_in_stream else b"<< /Type /Catalog /Pages 2 0 R >>"
+    )
+    obj(3, PAGES[1])
+    obj(
+        4,
+        b"<< /Type /ObjStm /N 1 /First %d /Filter /FlateDecode /Length %d >>\nstream\n"
+        % (len(header), len(stream)),
+    )
+    out[-len(b"\nendobj\n") :] = bytes(stream) + b"\nendstream\nendobj\n"
+    offs[5] = len(out)
+
+    def row(kind: int, a: int, b: int) -> bytes:
+        return bytes([kind]) + struct.pack(">I", a) + bytes([b])
+
+    rows = row(0, 0, 255) + b"".join(
+        row(2, 4, 0) if n == num else row(1, offs[n], 0) for n in (1, 2, 3, 4, 5)
+    )
+    out += b"5 0 obj\n<< /Type /XRef /Size 6 /W [1 4 1] /Root 1 0 R /Length %d >>\nstream\n" % len(rows)
+    out += rows + b"\nendstream\nendobj\nstartxref\n%d\n%%%%EOF\n" % offs[5]
+    return bytes(out)
+
+
+def test_file_validation_is_bounded_on_decompression_bombs(monkeypatch):
+    files.validate(objstm_pdf(1))  # a well-formed object-stream PDF passes
+    with pytest.raises(Invalid, match="active"):
+        files.validate(objstm_pdf(1, catalog_in_stream=True))
+    bomb = objstm_pdf(200)
+    assert len(bomb) < 300_000
+    for content in (bomb, objstm_pdf(80, catalog_in_stream=True)):  # hiding past the decode cap fails closed
+        with pytest.raises(Invalid) as e:
+            files.validate(content)
+        assert e.value.code in ("file_limit", "file_malformed"), e.value.code
+    # without qpdf's decode cap the child's address-space limit still stops the bomb
+    monkeypatch.setattr(files, "MAX_DECODED_STREAM_BYTES", 0)
+    monkeypatch.setattr(files, "VALIDATE_MAX_MEMORY_BYTES", 512 * 1024 * 1024)
+    files.validate(pdf())
+    with pytest.raises(Invalid) as e:
+        files.validate(objstm_pdf(1024))
+    assert e.value.code in ("file_limit", "file_malformed"), e.value.code
+
+
+def test_file_validation_limits_map_to_file_limit(monkeypatch):
+    deep = raw_pdf(b"<< /Type /Catalog /Pages 2 0 R /X " + b"[" * 600 + b"]" * 600 + b" >>", *PAGES)
+    with pytest.raises(Invalid) as e:
+        files.validate(deep)
+    assert e.value.code == "file_limit"
+    monkeypatch.setattr(files, "MAX_OBJECTS", 2)
+    with pytest.raises(Invalid, match="more than 2 objects") as e:
+        files.validate(pdf())
+    assert e.value.code == "file_limit"
+    monkeypatch.undo()
+    monkeypatch.setattr(files, "VALIDATE_TIMEOUT_SECONDS", 0.001)
+    with pytest.raises(Invalid, match="longer than") as e:
+        files.validate(pdf())
+    assert e.value.code == "file_limit"
+
+
 def test_money_parse():
     assert parse_cents("1,234.5") == 123_450 and parse_cents("$7") == 700
     with pytest.raises(ValueError):
@@ -415,6 +500,68 @@ def test_inbox_poll(vendor_po):
         inv = db.execute(select(Invoice).where(Invoice.invoice_number == "IN1")).scalar_one()
         assert inv.source == "inbox" and inv.uploaded_by == "system:ap-inbox"
         assert audit.verify_chain(db, "ap").ok
+
+
+@pytest.fixture
+def mock_inbox(monkeypatch):
+    """Routes the inbox adapter to the in-process mocks app, so this runs without the mocks server."""
+    mocks.reset()
+    client = TestClient(mocks.app)
+    base = get_settings().mocks_base_url
+
+    def post(url: str, **kw):
+        return client.post(url.removeprefix(base), params=kw.get("params"))
+
+    monkeypatch.setattr(service, "httpx", SimpleNamespace(post=post))
+    return mocks.STATE["ap_inbox"]
+
+
+def test_inbox_poisoned_message_does_not_discard_the_rest(vendor_po, mock_inbox):
+    mock_inbox.extend(
+        [
+            {
+                "from": "a@x.example.com",
+                "filename": "a.pdf",
+                "content_b64": base64.b64encode(pdf(number="IN2")).decode(),
+            },
+            {
+                "from": "b@x.example.com",
+                "filename": "bomb.pdf",
+                "content_b64": base64.b64encode(objstm_pdf(200)).decode(),
+            },
+            {"from": "c@x.example.com", "filename": "odd.pdf", "content_b64": 123},
+            {"from": "d@x.example.com", "filename": "d.pdf"},
+            {
+                "from": "e@x.example.com",
+                "filename": "e.pdf",
+                "content_b64": base64.b64encode(pdf(number="IN3")).decode(),
+            },
+        ]
+    )
+    with session_scope() as db:
+        service.poll_inbox(db, {})
+    with session_scope() as db:
+        got = db.execute(select(Invoice.invoice_number).where(Invoice.source == "inbox")).scalars().all()
+        assert len(got) == 2 and set(got) == {"IN2", "IN3"}
+        rejected = (
+            db.execute(select(AuditEvent).where(AuditEvent.action == "ap.inbox.rejected")).scalars().all()
+        )
+        assert len(rejected) == 3
+        assert audit.verify_chain(db, "ap").ok
+    assert mocks.STATE["ap_inbox"] == []
+
+
+def test_inbox_worker_death_leaves_later_messages_queued(vendor_po, mock_inbox, monkeypatch):
+    msgs = [{"from": "a@x.example.com", "filename": f"{i}.pdf", "content_b64": ""} for i in range(3)]
+    mock_inbox.extend(msgs)
+
+    def die(*_a, **_k):
+        raise SystemExit("worker killed")
+
+    monkeypatch.setattr(service, "ingest", die)
+    with pytest.raises(SystemExit), session_scope() as db:
+        service.poll_inbox(db, {})
+    assert mocks.STATE["ap_inbox"] == msgs[1:]
 
 
 def test_seed_runs():

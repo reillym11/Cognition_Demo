@@ -711,14 +711,21 @@ def batch_file(db: Session, p: Principal, bid: int, reason: str | None) -> Payme
 
 
 def poll_inbox(db: Session, _: dict[str, Any]) -> None:
+    """Takes one message at a time, so a message that fails (or kills the worker) never discards the rest."""
     actor = system_principal("ap-inbox")
-    r = httpx.post(f"{get_settings().mocks_base_url}/ap-inbox/messages/take", timeout=5)
-    r.raise_for_status()
-    for m in r.json():
+    while True:
+        r = httpx.post(
+            f"{get_settings().mocks_base_url}/ap-inbox/messages/take", params={"limit": 1}, timeout=5
+        )
+        r.raise_for_status()
+        taken = r.json()
+        if not taken:
+            return
+        m = taken[0]
         try:
             with db.begin_nested():
                 ingest(db, actor, m.get("filename", "inbox.pdf"), base64.b64decode(m["content_b64"]), "inbox")
-        except (Invalid, KeyError, ValueError) as e:
+        except Exception as e:  # any failure rejects this message only; the savepoint already rolled it back
             audit.record(
                 db,
                 actor,
@@ -726,7 +733,7 @@ def poll_inbox(db: Session, _: dict[str, Any]) -> None:
                 RES,
                 "inbox",
                 chain=CHAIN,
-                reason=str(e)[:200],
+                reason=(str(e) if isinstance(e, Invalid) else type(e).__name__)[:200],
                 after={"from": m.get("from"), "filename": files.sanitize_name(str(m.get("filename", "")))},
             )
 
