@@ -1,6 +1,8 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
+declare const process: { env: Record<string, string | undefined> };
+
 export default defineConfig({
   plugins: [react()],
   build: {
@@ -11,6 +13,8 @@ export default defineConfig({
   },
   server: {
     // Preview hosts reach the app through one origin; /entra proxies the local mock Entra ID for that case.
+    // In Codespaces listen on all interfaces so the forwarded port is detected and opened.
+    host: process.env.CODESPACES ? true : undefined,
     allowedHosts: ["localhost", ".devinapps.com", ".app.github.dev"],
     proxy: {
       "/api": { target: "http://localhost:8000", changeOrigin: false, xfwd: true },
