@@ -1,4 +1,5 @@
 import contextlib
+import dataclasses
 import threading
 
 import pytest
@@ -9,7 +10,7 @@ from sqlalchemy import func, select, update
 
 from app.foundation import approvals, jobs
 from app.foundation.db import session_scope, utcnow
-from app.foundation.errors import Conflict, Forbidden, Invalid
+from app.foundation.errors import Conflict, Forbidden, Invalid, NotFound
 from app.foundation.models import Job
 from app.tools.refunds import service
 from app.tools.refunds.models import RESERVING, Refund, Transaction
@@ -34,12 +35,13 @@ def processor_count(charge_id: str) -> int:
     return sum(1 for r in mocks.STATE["refunds"].values() if r["charge_id"] == charge_id)
 
 
-def make_txn(amount_cents: int = 100_000) -> int:
+def make_txn(amount_cents: int = 100_000, region: str = "US") -> int:
     with session_scope() as db:
         n = db.execute(select(func.count()).select_from(Transaction)).scalar_one()
         t = Transaction(
             charge_id=f"ch_T{n:05d}",
             merchant="Test Market",
+            region=region,
             customer_name="Pat Customer",
             customer_email="pat@example.com",
             card_last4="4242",
@@ -132,10 +134,10 @@ def test_validation():
 
 
 def test_contractor_always_needs_approval_and_sees_masked_pii():
-    txn = make_txn()
+    txn = make_txn(region="EU")
     assert status(request(txn, 500, who="casey.contractor")) == "pending_approval"
     with session_scope() as db:
-        d = service.txn_dict(service.get_txn(db, txn))
+        d = service.txn_dict(service.get_txn(db, principal("casey.contractor"), txn))
         assert d["customer_email"] != "pat@example.com"
     with session_scope() as db, pytest.raises(Forbidden):
         service.reveal(db, principal("casey.contractor"), txn, "customer_email", "curious")
@@ -158,7 +160,7 @@ def test_lost_response_reconciles_without_double_refund():
     jobs.run_until_idle()
     assert status(rid) == "unknown"
     with session_scope() as db:
-        charge = service.get_txn(db, txn).charge_id
+        charge = service.get_txn(db, principal("alex.agent"), txn).charge_id
     assert processor_count(charge) == 1  # it happened, we just didn't hear back
     with session_scope() as db:
         assert service.reserved_cents(db, txn) == 10_000  # unknown still reserves
@@ -176,7 +178,7 @@ def test_5xx_before_processing_reconciles_then_resends_once():
     run_jobs()
     assert status(rid) == "succeeded"
     with session_scope() as db:
-        charge = service.get_txn(db, txn).charge_id
+        charge = service.get_txn(db, principal("alex.agent"), txn).charge_id
     assert processor_count(charge) == 1
 
 
@@ -266,6 +268,48 @@ def test_api_masks_and_enforces(login):
         == 403
     )
     assert login("erin.engineer").get("/api/refunds/requests").status_code == 403
+
+
+def test_contractor_region_row_scope(login):
+    eu, us = make_txn(region="EU"), make_txn(region="US")
+    eu_rid, us_rid = request(eu, 500), request(us, 700)
+    casey = login("casey.contractor")
+
+    txns = casey.get("/api/refunds/transactions").json()
+    assert {t["id"] for t in txns["items"]} == {eu} and txns["total"] == 1
+    assert casey.get("/api/refunds/transactions", params={"q": "Test"}).json()["total"] == 1
+    assert casey.get(f"/api/refunds/transactions/{eu}").status_code == 200
+    assert casey.get(f"/api/refunds/transactions/{us}").status_code == 404
+    body = {"amount_cents": 100, "reason_code": "GOODWILL", "reason": "out of scope"}
+    assert casey.post(f"/api/refunds/transactions/{us}/refunds", json=body).status_code == 404
+    with session_scope() as db:
+        assert (
+            db.execute(
+                select(func.count()).select_from(Refund).where(Refund.transaction_id == us)
+            ).scalar_one()
+            == 1
+        )
+
+    reqs = casey.get("/api/refunds/requests").json()
+    assert {r["id"] for r in reqs["items"]} == {eu_rid} and reqs["total"] == 1
+    assert casey.get(f"/api/refunds/requests/{eu_rid}").status_code == 200
+    assert casey.get(f"/api/refunds/requests/{us_rid}").status_code == 404
+    assert casey.get(f"/api/refunds/requests/{us_rid}/audit").status_code == 404
+    assert sum(s["count"] for s in casey.get("/api/refunds/stats").json().values()) == 1
+
+    agent = login("alex.agent")
+    assert agent.get("/api/refunds/transactions").json()["total"] == 2
+    assert agent.get(f"/api/refunds/requests/{us_rid}").status_code == 200
+    assert sum(s["count"] for s in agent.get("/api/refunds/stats").json().values()) == 2
+
+
+def test_missing_region_sees_nothing():
+    txn = make_txn(region="EU")
+    p = dataclasses.replace(principal("casey.contractor"), region=None)
+    with session_scope() as db, pytest.raises(NotFound):
+        service.get_txn(db, p, txn)
+    with session_scope() as db, pytest.raises(NotFound):
+        service.request_refund(db, p, txn, 100, "GOODWILL", "no region")
 
 
 def test_seed_100k_fast():

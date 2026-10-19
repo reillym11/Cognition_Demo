@@ -16,6 +16,7 @@ class Transaction(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     charge_id: Mapped[str] = mapped_column(String(32), unique=True)
     merchant: Mapped[str] = mapped_column(String(100), index=True)
+    region: Mapped[str] = mapped_column(String(4), index=True)
     customer_name: Mapped[str] = mapped_column(String(200))
     customer_email: Mapped[str] = mapped_column(String(200))
     card_last4: Mapped[str] = mapped_column(String(4))

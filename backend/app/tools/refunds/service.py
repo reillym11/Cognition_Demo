@@ -29,8 +29,16 @@ def fmt(cents: int, currency: str = "USD") -> str:
     return Money(int(cents), currency).format()
 
 
-def get_txn(db: Session, txn_id: int, *, lock: bool = False) -> Transaction:
-    q = select(Transaction).where(Transaction.id == txn_id)
+def scoped(q: Any, p: Principal) -> Any:
+    """Row scope: users see only their merchants' region unless granted refunds.all_regions.
+    `q` must select from (or join) Transaction."""
+    if p.has("refunds.all_regions") or p.is_system:
+        return q
+    return q.where(Transaction.region == (p.region or "__none__"))
+
+
+def get_txn(db: Session, p: Principal, txn_id: int, *, lock: bool = False) -> Transaction:
+    q = scoped(select(Transaction).where(Transaction.id == txn_id), p)
     if lock:
         q = q.with_for_update()
     t = db.execute(q).scalar_one_or_none()
@@ -39,10 +47,10 @@ def get_txn(db: Session, txn_id: int, *, lock: bool = False) -> Transaction:
     return t
 
 
-def get_refund(db: Session, refund_id: int, *, lock: bool = False) -> Refund:
-    q = select(Refund).where(Refund.id == refund_id)
+def get_refund(db: Session, p: Principal, refund_id: int, *, lock: bool = False) -> Refund:
+    q = scoped(select(Refund).join(Transaction).where(Refund.id == refund_id), p)
     if lock:
-        q = q.with_for_update()
+        q = q.with_for_update(of=Refund)
     r = db.execute(q).scalar_one_or_none()
     if r is None:
         raise NotFound("refund not found")
@@ -72,6 +80,7 @@ def txn_dict(t: Transaction, reserved: int | None = None) -> dict[str, Any]:
         "id": t.id,
         "charge_id": t.charge_id,
         "merchant": t.merchant,
+        "region": t.region,
         "customer_name": t.customer_name,
         "customer_email": t.customer_email,
         "card_last4": t.card_last4,
@@ -108,7 +117,7 @@ def refund_dict(r: Refund, t: Transaction | None = None) -> dict[str, Any]:
         "executed_at": r.executed_at.isoformat() if r.executed_at else None,
     }
     if t is not None:
-        d |= {"charge_id": t.charge_id, "merchant": t.merchant}
+        d |= {"charge_id": t.charge_id, "merchant": t.merchant, "region": t.region}
     return d
 
 
@@ -121,7 +130,7 @@ def request_refund(
     if isinstance(amount_cents, bool) or not isinstance(amount_cents, int) or amount_cents <= 0:
         raise Invalid("amount_cents must be a positive integer number of cents")
     lock_requester(db, p.oid)
-    t = get_txn(db, txn_id, lock=True)  # serialises concurrent refunds on the same charge
+    t = get_txn(db, p, txn_id, lock=True)  # serialises concurrent refunds on the same charge
     amount = Money(amount_cents, t.currency)
     reserved = reserved_cents(db, t.id)
     remaining = t.amount_cents - reserved
@@ -213,7 +222,7 @@ def request_refund(
 
 
 def on_approved(db: Session, req: ApprovalRequest) -> None:
-    r = get_refund(db, int(req.subject_id), lock=True)
+    r = get_refund(db, system_principal("refunds-approval"), int(req.subject_id), lock=True)
     if r.status != "pending_approval":
         return
     r.status = "approved"
@@ -233,7 +242,7 @@ def on_approved(db: Session, req: ApprovalRequest) -> None:
 
 
 def on_rejected(db: Session, req: ApprovalRequest) -> None:
-    r = get_refund(db, int(req.subject_id), lock=True)
+    r = get_refund(db, system_principal("refunds-approval"), int(req.subject_id), lock=True)
     if r.status != "pending_approval":
         return
     r.status = "rejected"  # no longer reserving; the balance is released
@@ -278,10 +287,11 @@ def _finish(db: Session, r: Refund, status: str, *, processor_ref: str | None = 
 
 
 def execute(db: Session, payload: dict[str, Any]) -> None:
-    r = get_refund(db, int(payload["refund_id"]), lock=True)
+    sp = system_principal("refunds-executor")
+    r = get_refund(db, sp, int(payload["refund_id"]), lock=True)
     if r.status != "approved":
         return  # already executed, failed, or awaiting reconciliation: never send twice
-    t = get_txn(db, r.transaction_id)
+    t = get_txn(db, sp, r.transaction_id)
     r.attempts += 1
     try:
         res = get_processor().refund(t.charge_id, r.amount_cents, r.currency, r.idempotency_key)
@@ -315,7 +325,7 @@ def execute(db: Session, payload: dict[str, Any]) -> None:
 
 
 def reconcile(db: Session, payload: dict[str, Any]) -> None:
-    r = get_refund(db, int(payload["refund_id"]), lock=True)
+    r = get_refund(db, system_principal("refunds-reconciler"), int(payload["refund_id"]), lock=True)
     if r.status != "unknown":
         return
     rec = get_processor().lookup(r.idempotency_key)  # ProcessorUnknown -> job retries with backoff
@@ -347,7 +357,7 @@ def reconcile_sweep(db: Session, _: dict[str, Any]) -> None:
 
 def request_reconcile(db: Session, p: Principal, refund_id: int, reason: str | None) -> Refund:
     reason = require_reason(reason, "a manual reconcile")
-    r = get_refund(db, refund_id)
+    r = get_refund(db, p, refund_id)
     if r.status != "unknown":
         raise Conflict("only refunds with an unknown outcome can be reconciled")
     audit.record(db, p, "refund.reconcile_requested", RES, r.id, chain=CHAIN, reason=reason)
@@ -361,7 +371,7 @@ def reveal(db: Session, p: Principal, txn_id: int, field: str, reason: str | Non
     if field not in PII_FIELDS:
         raise Invalid(f"field must be one of {PII_FIELDS}")
     reason = require_reason(reason, "revealing customer data")
-    t = get_txn(db, txn_id)
+    t = get_txn(db, p, txn_id)
     audit.record(
         db,
         p,
@@ -375,10 +385,7 @@ def reveal(db: Session, p: Principal, txn_id: int, field: str, reason: str | Non
     return str(getattr(t, field))
 
 
-def stats(db: Session) -> dict[str, Any]:
-    rows = db.execute(
-        select(Refund.status, func.count(), func.coalesce(func.sum(Refund.amount_cents), 0)).group_by(
-            Refund.status
-        )
-    ).all()
+def stats(db: Session, p: Principal) -> dict[str, Any]:
+    q = select(Refund.status, func.count(), func.coalesce(func.sum(Refund.amount_cents), 0)).join(Transaction)
+    rows = db.execute(scoped(q, p).group_by(Refund.status)).all()
     return {s: {"count": n, "total_cents": int(c), "total": fmt(int(c))} for s, n, c in rows}

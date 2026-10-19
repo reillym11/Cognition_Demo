@@ -58,7 +58,7 @@ def list_transactions(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
 ) -> dict[str, Any]:
-    stmt = select(Transaction)
+    stmt = service.scoped(select(Transaction), p)
     if q:
         s = q.strip()
         stmt = stmt.where(or_(Transaction.charge_id == s, Transaction.merchant.ilike(f"%{s}%")))
@@ -76,7 +76,7 @@ def list_transactions(
 def get_transaction(
     txn_id: int, p: Principal = Depends(require("refunds.read")), db: Session = Depends(get_db)
 ) -> dict[str, Any]:
-    t = service.get_txn(db, txn_id)
+    t = service.get_txn(db, p, txn_id)
     refunds = db.execute(select(Refund).where(Refund.transaction_id == t.id).order_by(Refund.id)).scalars()
     return {
         "transaction": service.txn_dict(t, service.reserved_cents(db, t.id)),
@@ -108,7 +108,7 @@ def reveal(
 
 
 def _refunds_filtered(p: Principal, status: str | None, mine: str | None) -> Any:
-    stmt = select(Refund)
+    stmt = service.scoped(select(Refund).join(Transaction), p)
     if status:
         stmt = stmt.where(Refund.status == status)
     if mine:
@@ -144,7 +144,7 @@ def list_refunds(
 
 @router.get("/stats")
 def stats(p: Principal = Depends(require("refunds.read")), db: Session = Depends(get_db)) -> dict[str, Any]:
-    return service.stats(db)
+    return service.stats(db, p)
 
 
 @router.get("/export")
@@ -155,9 +155,7 @@ def export(
     status: str | None = None,
     mine: str | None = None,
 ) -> Any:
-    rows = db.execute(
-        _refunds_filtered(p, status, mine).add_columns(Transaction).join(Transaction).order_by(Refund.id)
-    ).all()
+    rows = db.execute(_refunds_filtered(p, status, mine).add_columns(Transaction).order_by(Refund.id)).all()
     return exports.csv_export(
         db,
         p,
@@ -187,8 +185,8 @@ def export(
 def get_refund(
     refund_id: int, p: Principal = Depends(require("refunds.read")), db: Session = Depends(get_db)
 ) -> dict[str, Any]:
-    r = service.get_refund(db, refund_id)
-    t = service.get_txn(db, r.transaction_id)
+    r = service.get_refund(db, p, refund_id)
+    t = service.get_txn(db, p, r.transaction_id)
     req = db.get(ApprovalRequest, r.approval_request_id) if r.approval_request_id else None
     return {
         "refund": service.refund_dict(r, t),
@@ -200,7 +198,7 @@ def get_refund(
 def refund_audit(
     refund_id: int, p: Principal = Depends(require("refunds.read")), db: Session = Depends(get_db)
 ) -> list[dict[str, Any]]:
-    r = service.get_refund(db, refund_id)
+    r = service.get_refund(db, p, refund_id)
     conds = [(AuditEvent.resource == service.RES) & (AuditEvent.resource_id == str(r.id))]
     if r.approval_request_id:
         conds.append(

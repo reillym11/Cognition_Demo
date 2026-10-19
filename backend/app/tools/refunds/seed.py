@@ -15,6 +15,11 @@ MERCHANTS = [
     for w in ("Acme", "Northwind", "Contoso", "Fabrikam", "Globex", "Initech", "Umbrella", "Stark")
     for s in ("Market", "Travel", "Software", "Fitness", "Books")
 ]
+EU_BRANDS = ("Contoso", "Fabrikam")
+
+
+def merchant_region(merchant: str) -> str:
+    return "EU" if merchant.split(" ", 1)[0] in EU_BRANDS else "US"
 
 
 def seed(db: Session, scale: float = 1.0) -> None:
@@ -27,13 +32,15 @@ def seed(db: Session, scale: float = 1.0) -> None:
     txns, refunds = [], []
     for i in range(1, n + 1):
         name, email = people[rng.randrange(len(people))]
+        merchant = rng.choice(MERCHANTS)
         amount = int(rng.lognormvariate(8.6, 1.0)) + 100  # skewed: most < $200, tail into thousands
         captured = now - timedelta(minutes=rng.uniform(0, 60 * 24 * 180))
         txns.append(
             {
                 "id": i,
                 "charge_id": f"ch_{i:07d}",
-                "merchant": rng.choice(MERCHANTS),
+                "merchant": merchant,
+                "region": merchant_region(merchant),
                 "customer_name": name,
                 "customer_email": email,
                 "card_last4": f"{rng.randint(0, 9999):04d}",

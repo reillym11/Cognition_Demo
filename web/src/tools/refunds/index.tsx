@@ -9,7 +9,7 @@ import {
 import type { ToolRoute } from "../registry";
 
 type Txn = {
-  id: number; charge_id: string; merchant: string; customer_name: string; customer_email: string; card_last4: string;
+  id: number; charge_id: string; merchant: string; region: string; customer_name: string; customer_email: string; card_last4: string;
   amount_cents: number; amount: string; captured_at: string; reserved_cents?: number; remaining_cents?: number;
 };
 type Refund = {
@@ -36,6 +36,7 @@ function Transactions() {
         columns={[
           { key: "charge_id", label: "Charge", sortable: true },
           { key: "merchant", label: "Merchant" },
+          { key: "region", label: "Region" },
           { key: "customer_email", label: "Customer (masked)" },
           { key: "amount_cents", label: "Captured", sortable: true, render: (r) => r.amount },
           { key: "captured_at", label: "Captured at", sortable: true, render: (r) => dt(r.captured_at) },
@@ -61,6 +62,7 @@ function TransactionDetail() {
         <Card title="Transaction">
           <KeyValues rows={[
             ["Merchant", t.merchant],
+            ["Region", t.region],
             ["Customer", <MaskedField field="customer_name" value={t.customer_name} revealUrl={`/api/refunds/transactions/${id}/reveal`} canReveal={q.data.can_reveal} />],
             ["Email", <MaskedField field="customer_email" value={t.customer_email} revealUrl={`/api/refunds/transactions/${id}/reveal`} canReveal={q.data.can_reveal} />],
             ["Card", `•••• ${t.card_last4}`], ["Captured", t.amount], ["Reserved by refunds", usd(t.reserved_cents ?? 0)],
