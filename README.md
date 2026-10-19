@@ -59,6 +59,10 @@ the real OIDC code + PKCE round trip against the mock Entra ID; the mock's page 
 KYC analyst, a second complaints handler, a product manager, and a user with a groups overage (more than 200 groups
 and no app roles, which is refused). After editing personas run `python scripts/gen_login_page.py`.
 
+To use the app from a single public URL (for example a preview link), start it with
+`ITP_PUBLIC_BASE_URL=<url> ITP_OIDC_BROWSER_ISSUER=<url>/entra make dev`; the web server proxies `/entra` to the mock
+Entra ID so the whole sign-in stays on that one address.
+
 Useful commands: `make check` (everything CI runs), `make test`, `make audit-verify`, `make audit-tamper-demo`
 (edits one audit row as superuser and shows verification fail), `make access-matrix`, `make new-tool name=<x>`.
 

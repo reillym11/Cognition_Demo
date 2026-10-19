@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     owner_database_url: str = "postgresql+psycopg://itp_owner:itp_owner@localhost:54320/itp"
     public_base_url: str = "http://localhost:5173"
     oidc_issuer: str = "http://localhost:8081/entra"
+    # Browser-facing base of the IdP when the browser cannot reach oidc_issuer directly (e.g. a preview URL that
+    # proxies /entra to the mock). Only the authorize redirect uses it; tokens are still fetched from oidc_issuer.
+    oidc_browser_issuer: str = ""
     oidc_client_id: str = "itp-local"
     oidc_client_secret: str = "local-dev-not-a-secret"  # noqa: S105 - mock IdP accepts any secret
     mocks_base_url: str = "http://localhost:8090"

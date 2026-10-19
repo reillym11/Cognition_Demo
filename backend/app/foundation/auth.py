@@ -120,7 +120,10 @@ def login(request: Request, return_to: str | None = None, login_hint: str | None
     }
     if login_hint and LOGIN_HINT.fullmatch(login_hint):
         params["login_hint"] = login_hint
-    resp = RedirectResponse(f"{meta['authorization_endpoint']}?{urlencode(params)}", status_code=303)
+    authorize = meta["authorization_endpoint"]
+    if s.oidc_browser_issuer and authorize.startswith(s.oidc_issuer):
+        authorize = s.oidc_browser_issuer + authorize[len(s.oidc_issuer) :]
+    resp = RedirectResponse(f"{authorize}?{urlencode(params)}", status_code=303)
     resp.set_cookie(
         LOGIN_BINDING_COOKIE,
         binding,
