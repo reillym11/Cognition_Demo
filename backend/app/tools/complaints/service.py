@@ -8,6 +8,7 @@ from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from app.foundation import audit, workflow
+from app.foundation.adapters.directory import get_directory
 from app.foundation.authz import Principal
 from app.foundation.datacls import mask_record
 from app.foundation.db import utcnow
@@ -151,8 +152,27 @@ def _require_worker(c: Any, p: Principal) -> None:
     if c.stage == "compliance_review":
         if not p.has("complaints.compliance_review"):
             raise Forbidden("this case is awaiting compliance review")
+    elif not p.has("complaints.work"):
+        raise Forbidden("missing permission: complaints.work")
     elif c.assigned_to != p.oid:
         raise Forbidden("claim the complaint before working on it")
+
+
+def _still_handler(oid: str | None) -> bool:
+    """Re-check the directory before handing a case back: a stale completer may have lost the role."""
+    from app.foundation.registry import get_registry
+
+    if not oid:
+        return False
+    try:
+        entry = get_directory().lookup(oid)
+    except Exception:
+        return False
+    return bool(
+        entry
+        and entry.enabled
+        and "complaints.work" in get_registry().permissions_for(frozenset(entry.roles))
+    )
 
 
 def claim(db: Session, p: Principal, cid: int) -> Any:
@@ -225,8 +245,9 @@ def advance(db: Session, p: Principal, cid: int, reason: str | None) -> Any:
         if nxt.key == "compliance_review":
             c.assigned_to = c.assigned_name = None
         elif done == "compliance_review":
-            # hand back to whoever investigated
-            c.assigned_to = c.completers.get("investigate")
+            # hand back to whoever investigated, if they can still work complaints; else back to the queue
+            investigator = c.completers.get("investigate")
+            c.assigned_to = investigator if _still_handler(investigator) else None
             c.assigned_name = None
     audit.record(
         db,

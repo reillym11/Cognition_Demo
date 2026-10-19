@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.foundation import audit, exports
 from app.foundation.authz import Principal, require
 from app.foundation.db import get_db, utcnow
+from app.foundation.errors import Forbidden
 from app.foundation.models import AuditEvent
 from app.tools.complaints import service
 from app.tools.complaints.models import Complaint
@@ -35,6 +36,12 @@ class LinkBody(BaseModel):
 class RevealBody(BaseModel):
     field: str
     reason: str | None = None
+
+
+def _can_progress(p: Principal) -> Principal:
+    if not (p.has("complaints.work") or p.has("complaints.compliance_review")):
+        raise Forbidden("missing permission: complaints.work or complaints.compliance_review")
+    return p
 
 
 def _filtered(
@@ -208,7 +215,7 @@ def update(
     p: Principal = Depends(require("complaints.read")),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    return service.to_dict(service.update(db, p, cid, body.fields, body.checks, body.reason))
+    return service.to_dict(service.update(db, _can_progress(p), cid, body.fields, body.checks, body.reason))
 
 
 @router.post("/{cid}/advance")
@@ -218,7 +225,7 @@ def advance(
     p: Principal = Depends(require("complaints.read")),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    return service.to_dict(service.advance(db, p, cid, body.reason))
+    return service.to_dict(service.advance(db, _can_progress(p), cid, body.reason))
 
 
 @router.post("/{cid}/links")
