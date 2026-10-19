@@ -27,7 +27,8 @@ SUPER = create_engine("postgresql+psycopg://postgres:postgres@localhost:54320/it
 class MemoryDirectory:
     def __init__(self) -> None:
         self.entries = {
-            p["oid"]: DirectoryEntry(p["oid"], True, p.get("roles") or []) for p in PERSONAS.values()
+            p["oid"]: DirectoryEntry(p["oid"], True, p.get("roles") or [], p.get("region"))
+            for p in PERSONAS.values()
         }
 
     def lookup(self, oid: str) -> DirectoryEntry | None:
