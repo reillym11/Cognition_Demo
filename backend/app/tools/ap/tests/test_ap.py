@@ -1,10 +1,12 @@
 import base64
+import json
 
 import httpx
 import pytest
 from sqlalchemy import select
 
 from app.foundation import approvals, audit, files
+from app.foundation.datacls import fingerprint_record, mask_record
 from app.foundation.db import session_scope
 from app.foundation.errors import Conflict, Forbidden, Invalid
 from app.foundation.extraction import PdfTextExtractor
@@ -201,6 +203,32 @@ def test_api_masks_bank_details_and_permissions(login, vendor_po):
     assert login("abe.approver").post("/api/ap/batches", json={"reason": "not allowed"}).status_code == 403
     assert login("erin.engineer").get("/api/ap/invoices").status_code == 403
     assert c.get(f"/api/ap/invoices/{r.json()['id']}/file").content.startswith(b"%PDF")
+
+
+def test_no_bank_detail_anywhere_in_invoice_json(login, vendor_po):
+    c = login("cleo.clerk")
+    iid = c.post(
+        "/api/ap/invoices", files={"file": ("inv.pdf", pdf(number="LEAK1"), "application/pdf")}
+    ).json()["id"]
+    for body in (c.get("/api/ap/invoices?page_size=200").json(), c.get(f"/api/ap/invoices/{iid}").json()):
+        dumped = json.dumps(body)
+        assert ACCT not in dumped and ROUTING not in dumped
+    ex = c.get(f"/api/ap/invoices/{iid}").json()["extraction"]
+    conf = {f["field"]: f["confidence"] for f in ex["fields"]}
+    assert "value" not in ex["fields"][0] and isinstance(conf["remit_account"], float)
+
+
+def test_mask_record_masks_classified_keys_at_any_depth():
+    rec = {
+        "remit_account": ACCT,
+        "nested": {"fields": {"remit_routing": {"value": ROUTING, "confidence": 0.98}}},
+        "rows": [{"remit_account": ACCT, "memo": "ok"}],
+    }
+    masked = mask_record(service.RES, rec)
+    assert ACCT not in json.dumps(masked) and ROUTING not in json.dumps(masked)
+    assert masked["rows"][0]["memo"] == "ok" and masked["remit_account"] == "****" + ACCT[-4:]
+    fp = fingerprint_record(service.RES, rec)
+    assert ACCT not in json.dumps(fp) and ROUTING not in json.dumps(fp)
 
 
 def test_inbox_poll(vendor_po):
