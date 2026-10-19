@@ -32,4 +32,5 @@ def configure(level: int = logging.INFO) -> None:
     root = logging.getLogger()
     root.handlers[:] = [h]
     root.setLevel(level)
+    logging.getLogger("pikepdf").setLevel(logging.WARNING)
     logging.getLogger("uvicorn.access").disabled = True

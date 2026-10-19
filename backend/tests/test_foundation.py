@@ -388,7 +388,7 @@ def test_closed_request_rejects_decisions():
     with session_scope() as db:
         approvals.decide(db, principal("cam.controller"), rid, "reject", "not now")
     with session_scope() as db, pytest.raises(Conflict):
-        approvals.decide(db, principal("cam.controller"), rid, "approve", "late")
+        approvals.decide(db, pia, rid, "approve", "late")
 
 
 def test_redact_text_masks_pii_shapes():
@@ -545,4 +545,3 @@ def test_sensitive_rate_limit_returns_429(login, monkeypatch):
         c.post("/api/kyc/cases/999999/reveal", json={"field": "email", "reason": "check"}).json()["code"]
         == "rate_limited"
     )
-        approvals.decide(db, pia, rid, "approve", "late")

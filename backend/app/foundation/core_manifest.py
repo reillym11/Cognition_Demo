@@ -398,6 +398,7 @@ MANIFEST = ToolManifest(
         "core.access.read": "Read the generated access / separation-of-duties matrix",
         "core.policy.read": "Read policy values",
         "core.policy.request": "Request a policy change",
+        "core.policy.approve_core": "Approve changes to core policies (audit evidence-pack limits)",
         "core.jobs.read": "Read background job status",
         "core.jobs.admin": "Retry failed background jobs",
     },
@@ -415,6 +416,7 @@ MANIFEST = ToolManifest(
             "core.access.read",
             "core.policy.read",
             "core.policy.request",
+            "core.policy.approve_core",
         ],
         "Platform.Admin": [
             "core.jobs.read",
@@ -440,10 +442,14 @@ MANIFEST = ToolManifest(
     },
     policies={
         "core.evidence_pack_max_days": PolicyDef(
-            366, "Longest date range (days) one audit evidence pack may cover"
+            366,
+            "Longest date range (days) one audit evidence pack may cover",
+            approver="core.policy.approve_core",
         ),
         "core.evidence_pack_max_events": PolicyDef(
-            250_000, "Most audit events one evidence pack may contain; larger ranges must be split"
+            250_000,
+            "Most audit events one evidence pack may contain; larger ranges must be split",
+            approver="core.policy.approve_core",
         ),
     },
     classifications={"session": {}, "audit": {}, "policy": {}, "job": {}, "approval": {}},
