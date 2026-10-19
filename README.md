@@ -25,6 +25,18 @@ block update/delete), `approvals`, `policy`, `jobs` (Postgres `SKIP LOCKED` queu
 
 ## Run it
 
+### In GitHub Codespaces (nothing to install)
+
+1. On the repo page click **Code > Codespaces > Create codespace on main** (4-core machine). The first start
+   installs everything (a few minutes).
+2. In the Codespace terminal run `make demo-reset && make dev`.
+3. Open the **Ports** tab and click the globe next to port **5173**, pick a role in **Sign in as** and click **Sign in**.
+
+Sign-in stays on the forwarded 5173 address (the Makefile sets `ITP_PUBLIC_BASE_URL` and `ITP_OIDC_BROWSER_ISSUER`
+from the Codespace name). Stop the Codespace when you are done to save your free hours.
+
+### On your own machine
+
 Prerequisites: Docker, [uv](https://docs.astral.sh/uv/), Node 22 + pnpm 9.
 
 ```bash

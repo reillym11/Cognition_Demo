@@ -1,0 +1,22 @@
+{
+  "name": "Internal Tools Platform",
+  "image": "mcr.microsoft.com/devcontainers/python:1-3.12-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/devcontainers/features/node:1": { "version": "22", "pnpmVersion": "9" }
+  },
+  "hostRequirements": { "cpus": 4, "memory": "8gb" },
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+  "forwardPorts": [5173],
+  "portsAttributes": {
+    "5173": { "label": "App (sign in here)", "onAutoForward": "openBrowser" },
+    "8000": { "label": "API", "onAutoForward": "silent" },
+    "8081": { "label": "Mock Entra ID", "onAutoForward": "silent" },
+    "8090": { "label": "Mocks", "onAutoForward": "silent" },
+    "54320": { "label": "Postgres", "onAutoForward": "silent" }
+  },
+  "customizations": {
+    "codespaces": { "openFiles": ["README.md"] },
+    "vscode": { "extensions": ["ms-python.python", "charliermarsh.ruff", "dbaeumer.vscode-eslint"] }
+  }
+}

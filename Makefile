@@ -2,6 +2,12 @@
 SHELL := /bin/bash
 export PATH := $(HOME)/.local/bin:$(HOME)/.local/node/bin:$(PATH)
 UV := uv run --directory backend
+
+# In GitHub Codespaces the browser reaches the app on the forwarded port 5173 URL; sign-in stays on that origin.
+ifdef CODESPACE_NAME
+export ITP_PUBLIC_BASE_URL ?= https://$(CODESPACE_NAME)-5173.$(GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN)
+export ITP_OIDC_BROWSER_ISSUER ?= $(ITP_PUBLIC_BASE_URL)/entra
+endif
 OWNER_URL ?= postgresql+psycopg://itp_owner:itp_owner@localhost:54320/itp
 TEST_OWNER_URL ?= postgresql+psycopg://itp_owner:itp_owner@localhost:54320/itp_test
 

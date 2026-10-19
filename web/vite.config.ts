@@ -11,7 +11,7 @@ export default defineConfig({
   },
   server: {
     // Preview hosts reach the app through one origin; /entra proxies the local mock Entra ID for that case.
-    allowedHosts: ["localhost", ".devinapps.com"],
+    allowedHosts: ["localhost", ".devinapps.com", ".app.github.dev"],
     proxy: {
       "/api": { target: "http://localhost:8000", changeOrigin: false, xfwd: true },
       "/entra": { target: "http://localhost:8081", changeOrigin: true },
