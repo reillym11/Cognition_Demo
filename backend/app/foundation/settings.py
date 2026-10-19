@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     oidc_client_id: str = "itp-local"
     oidc_client_secret: str = "local-dev-not-a-secret"  # noqa: S105 - mock IdP accepts any secret
     mocks_base_url: str = "http://localhost:8090"
+    # Shared secret for the directory (and mock admin) API. Dev default only; set ITP_DIRECTORY_API_KEY.
+    directory_api_key: str = "local-dev-directory-key"
     session_idle_minutes: int = 30
     session_absolute_hours: int = 8
     roles_revalidate_seconds: int = 60

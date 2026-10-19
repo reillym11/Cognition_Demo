@@ -2,16 +2,20 @@
 
 All synthetic. Fault injection is controlled at runtime via POST /admin/faults so tests and demos can
 simulate timeouts, 5xx and "succeeded but the response was lost".
+Directory and /admin routes require `Authorization: Bearer <ITP_DIRECTORY_API_KEY>`.
 """
 
 import json
 import random
+import secrets
 import time
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel
+
+from app.foundation.settings import get_settings
 
 app = FastAPI(title="ITP mocks")
 
@@ -49,19 +53,25 @@ def _fault(name: str) -> str | None:
     return f["mode"]
 
 
+def require_api_key(authorization: str = Header(default="")) -> None:
+    expected = f"Bearer {get_settings().directory_api_key}"
+    if not secrets.compare_digest(authorization.encode(), expected.encode()):
+        raise HTTPException(401, "missing or invalid API key")
+
+
 class FaultIn(BaseModel):
     name: str
     mode: str  # error_500 | timeout | timeout_after_success | lost_response
     times: int = 1
 
 
-@app.post("/admin/faults")
+@app.post("/admin/faults", dependencies=[Depends(require_api_key)])
 def set_fault(f: FaultIn) -> dict[str, Any]:
     STATE["faults"][f.name] = {"mode": f.mode, "times": f.times}
     return STATE["faults"]
 
 
-@app.post("/admin/reset")
+@app.post("/admin/reset", dependencies=[Depends(require_api_key)])
 def admin_reset() -> dict[str, str]:
     reset()
     return {"status": "reset"}
@@ -70,7 +80,7 @@ def admin_reset() -> dict[str, str]:
 # ---------- Entra directory (Graph-shaped subset) ----------
 
 
-@app.get("/directory/users/{oid}")
+@app.get("/directory/users/{oid}", dependencies=[Depends(require_api_key)])
 def dir_user(oid: str) -> dict[str, Any]:
     u = STATE["directory"].get(oid)
     if u is None:
@@ -84,7 +94,7 @@ class RolesIn(BaseModel):
     region: str | None = None
 
 
-@app.patch("/directory/users/{oid}")
+@app.patch("/directory/users/{oid}", dependencies=[Depends(require_api_key)])
 def dir_update(oid: str, body: RolesIn) -> dict[str, Any]:
     u = STATE["directory"].setdefault(oid, {"accountEnabled": True, "appRoles": []})
     if body.appRoles is not None:

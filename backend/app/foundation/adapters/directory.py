@@ -23,11 +23,16 @@ class Directory(Protocol):
 
 
 class HttpDirectory:
-    def __init__(self, base_url: str):
+    def __init__(self, base_url: str, api_key: str):
         self.base_url = base_url
+        self.api_key = api_key
 
     def lookup(self, oid: str) -> DirectoryEntry | None:
-        r = httpx.get(f"{self.base_url}/directory/users/{oid}", timeout=3)
+        r = httpx.get(
+            f"{self.base_url}/directory/users/{oid}",
+            headers={"Authorization": f"Bearer {self.api_key}"},
+            timeout=3,
+        )
         if r.status_code == 404:
             return None
         r.raise_for_status()
@@ -47,7 +52,8 @@ def set_directory(d: Directory | None) -> None:
 
 @lru_cache
 def _default() -> HttpDirectory:
-    return HttpDirectory(get_settings().mocks_base_url)
+    s = get_settings()
+    return HttpDirectory(s.mocks_base_url, s.directory_api_key)
 
 
 def get_directory() -> Directory:
