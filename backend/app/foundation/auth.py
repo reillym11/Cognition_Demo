@@ -23,6 +23,7 @@ from app.foundation.adapters.directory import get_directory
 from app.foundation.authz import Principal, authenticated, public
 from app.foundation.db import session_scope
 from app.foundation.models import OidcLoginState, UserSession
+from app.foundation.ratelimit import sensitive_rate_limit
 from app.foundation.registry import get_registry
 from app.foundation.settings import get_settings
 
@@ -59,7 +60,7 @@ def _login_error(code: str) -> RedirectResponse:
     return RedirectResponse(f"{get_settings().public_base_url}/login?error={code}", status_code=303)
 
 
-@router.get("/login", dependencies=[Depends(public("starts OIDC sign-in"))])
+@router.get("/login", dependencies=[Depends(public("starts OIDC sign-in")), sensitive_rate_limit])
 def login(return_to: str | None = None) -> RedirectResponse:
     s = get_settings()
     meta = _oidc_metadata()["meta"]
@@ -112,7 +113,7 @@ def roles_from_claims(claims: dict[str, Any]) -> list[str]:
     raise PermissionError("no_roles")
 
 
-@router.get("/callback", dependencies=[Depends(public("OIDC redirect target"))])
+@router.get("/callback", dependencies=[Depends(public("OIDC redirect target")), sensitive_rate_limit])
 def callback(
     request: Request, code: str | None = None, state: str | None = None, error: str | None = None
 ) -> Response:
@@ -224,6 +225,28 @@ def create_session_for_tests(
             )
         )
     return token, csrf
+
+
+def valid_session_id(request: Request) -> str | None:
+    """Session id hash if the cookie names a live session (exists, not revoked, within timeouts), else None."""
+    cached = getattr(request.state, "principal", None)
+    if cached is not None and cached.session_id:
+        return str(cached.session_id)
+    token = request.cookies.get(SESSION_COOKIE)
+    if not token:
+        return None
+    s = get_settings()
+    now = datetime.now(UTC)
+    with session_scope() as db:
+        sess = db.get(UserSession, _hash(token))
+        if (
+            sess is None
+            or sess.revoked_at is not None
+            or now - sess.last_seen_at > timedelta(minutes=s.session_idle_minutes)
+            or now - sess.created_at > timedelta(hours=s.session_absolute_hours)
+        ):
+            return None
+        return sess.id_hash
 
 
 def principal_from_request(request: Request) -> Principal:

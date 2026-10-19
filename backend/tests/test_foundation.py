@@ -358,3 +358,53 @@ def test_evidence_pack_rejects_too_many_events(login):
     _set_policy("core.evidence_pack_max_events", 2)
     r = login("aud.auditor").get("/api/audit/evidence-pack", params=params)
     assert r.status_code == 422 and r.json()["code"] == "evidence_too_many_events"
+
+
+def test_rate_limit_key_ignores_forged_session_cookies(login):
+    from starlette.requests import Request
+
+    from app.foundation import auth
+    from app.foundation.ratelimit import client_key
+
+    def req(cookie: str | None) -> Request:
+        headers = [(b"cookie", f"{auth.SESSION_COOKIE}={cookie}".encode())] if cookie else []
+        return Request({"type": "http", "headers": headers, "client": ("10.0.0.7", 1234), "state": {}})
+
+    assert client_key(req(None)) == "ip:10.0.0.7"
+    assert client_key(req("forged-aaaaaaaaaaaaaaa")) == "ip:10.0.0.7"
+    assert client_key(req("forged-bbbbbbbbbbbbbbb")) == "ip:10.0.0.7"
+    token = login("ana.analyst").cookies.get(auth.SESSION_COOKIE)
+    assert client_key(req(token)) == f"session:{auth._hash(token)}"
+
+
+def test_sensitive_routes_carry_sensitive_rate_limit(app):
+    from app.foundation.authz import _api_routes
+    from app.foundation.ratelimit import _sensitive
+
+    sensitive = [
+        r
+        for r in _api_routes(app.routes)
+        if (
+            r.path.endswith(("/reveal", "/export", ".csv"))
+            or r.path in {"/api/auth/login", "/api/auth/callback"}
+        )
+    ]
+    assert len(sensitive) >= 9
+    missing = [r.path for r in sensitive if _sensitive not in {d.call for d in r.dependant.dependencies}]
+    assert missing == []
+
+
+def test_sensitive_rate_limit_returns_429(login, monkeypatch):
+    from app.foundation.settings import get_settings
+
+    monkeypatch.setattr(get_settings(), "rate_limit_sensitive", "2/minute")
+    c = login("ana.analyst")
+    codes = [
+        c.post("/api/kyc/cases/999999/reveal", json={"field": "email", "reason": "check"}).status_code
+        for _ in range(3)
+    ]
+    assert 429 not in codes[:2] and codes[2] == 429
+    assert (
+        c.post("/api/kyc/cases/999999/reveal", json={"field": "email", "reason": "check"}).json()["code"]
+        == "rate_limited"
+    )

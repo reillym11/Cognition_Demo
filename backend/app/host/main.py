@@ -7,10 +7,8 @@ import uuid
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
-from slowapi.util import get_remote_address
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import Response
 
@@ -18,9 +16,9 @@ from app.foundation import auth
 from app.foundation.authz import check_routes
 from app.foundation.errors import DomainError
 from app.foundation.logging_setup import configure
+from app.foundation.ratelimit import limiter
 from app.foundation.registry import get_registry
 from app.foundation.request_context import set_request_id
-from app.foundation.settings import get_settings
 
 log = logging.getLogger("itp.http")
 
@@ -60,14 +58,6 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             },
         )
         return response
-
-
-def _key(request: Request) -> str:
-    # Per session when signed in, else per IP.
-    return request.cookies.get(auth.SESSION_COOKIE, "")[:16] or get_remote_address(request)
-
-
-limiter = Limiter(key_func=_key, default_limits=[get_settings().rate_limit_default])
 
 
 def create_app() -> FastAPI:
