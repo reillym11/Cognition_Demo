@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { http } from "../../api/client";
 import { can, useMe } from "../../shell/me";
@@ -38,8 +38,31 @@ function Queue() {
   const [status, setStatus] = useState("");
   const [q, setQ] = useState("");
   const stats = useQuery({ queryKey: ["ap-stats"], queryFn: () => http<{ by_status: { status: string; count: number; total_cents: number }[]; bank_changes_open: number }>("GET", "/api/ap/stats") });
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [uploadErr, setUploadErr] = useState<unknown>(null);
+  const upload = async (f: File) => {
+    const fd = new FormData();
+    fd.append("file", f);
+    const r = await fetch("/api/ap/invoices", { method: "POST", body: fd, credentials: "include", headers: { "X-CSRF-Token": document.cookie.match(/itp_csrf=([^;]+)/)?.[1] ?? "" } });
+    if (!r.ok) { setUploadErr(new Error((await r.json()).detail ?? r.statusText)); return; }
+    setUploadErr(null);
+    nav(`/ap/invoices/${(await r.json()).id}`);
+  };
+  const canUpload = can(me.data, "ap.upload");
+  const canBatch = can(me.data, "ap.batch");
   return (
-    <Page title="AP invoices" actions={can(me.data, "ap.batch") ? <Button onClick={() => nav("/ap/batches")}>Payment batches</Button> : undefined}>
+    <Page title="AP invoices" actions={canUpload || canBatch ? (
+      <div className="flex gap-2">
+        {canUpload && (
+          <>
+            <Button variant="primary" onClick={() => fileInput.current?.click()}>Upload PDF</Button>
+            <input ref={fileInput} type="file" accept="application/pdf" className="sr-only" aria-label="Upload invoice PDF" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void upload(f); }} />
+          </>
+        )}
+        {canBatch && <Button onClick={() => nav("/ap/batches")}>Payment batches</Button>}
+      </div>
+    ) : undefined}>
+      {uploadErr != null && <ErrorBox error={uploadErr} />}
       <div className="flex flex-wrap gap-2 text-sm">
         {stats.data?.by_status.map((s) => <button key={s.status} onClick={() => setStatus(s.status)}><Badge tone={TONE[s.status]}>{statusLabel(s.status)}: {s.count} · {cents(s.total_cents)}</Badge></button>)}
       </div>
