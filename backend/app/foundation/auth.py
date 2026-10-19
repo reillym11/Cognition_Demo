@@ -16,14 +16,14 @@ from authlib.jose import JsonWebKey, jwt
 from authlib.oauth2.rfc7636 import create_s256_code_challenge
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 
 from app.foundation import audit
 from app.foundation.adapters.directory import get_directory
 from app.foundation.authz import Principal, authenticated, public
 from app.foundation.db import session_scope
 from app.foundation.models import OidcLoginState, UserSession
-from app.foundation.ratelimit import sensitive_rate_limit
+from app.foundation.ratelimit import signin_rate_limit
 from app.foundation.registry import get_registry
 from app.foundation.settings import get_settings
 
@@ -60,8 +60,8 @@ def _login_error(code: str) -> RedirectResponse:
     return RedirectResponse(f"{get_settings().public_base_url}/login?error={code}", status_code=303)
 
 
-@router.get("/login", dependencies=[Depends(public("starts OIDC sign-in")), sensitive_rate_limit])
-def login(return_to: str | None = None) -> RedirectResponse:
+@router.get("/login", dependencies=[Depends(public("starts OIDC sign-in")), signin_rate_limit])
+def login(request: Request, return_to: str | None = None) -> RedirectResponse:
     s = get_settings()
     meta = _oidc_metadata()["meta"]
     state, nonce, verifier, binding = (secrets.token_urlsafe(32) for _ in range(4))
@@ -71,6 +71,12 @@ def login(return_to: str | None = None) -> RedirectResponse:
                 OidcLoginState.created_at < datetime.now(UTC) - timedelta(minutes=10)
             )
         )
+        # A browser restarting sign-in gets a new binding cookie, so its earlier pending state is dead anyway.
+        if prior := request.cookies.get(LOGIN_BINDING_COOKIE):
+            db.execute(delete(OidcLoginState).where(OidcLoginState.browser_binding == _hash(prior)))
+        pending = db.scalar(select(func.count()).select_from(OidcLoginState)) or 0
+        if pending >= s.oidc_pending_login_cap:
+            return _login_error("signin_busy")
         db.add(
             OidcLoginState(
                 state=state,
@@ -113,7 +119,7 @@ def roles_from_claims(claims: dict[str, Any]) -> list[str]:
     raise PermissionError("no_roles")
 
 
-@router.get("/callback", dependencies=[Depends(public("OIDC redirect target")), sensitive_rate_limit])
+@router.get("/callback", dependencies=[Depends(public("OIDC redirect target")), signin_rate_limit])
 def callback(
     request: Request, code: str | None = None, state: str | None = None, error: str | None = None
 ) -> Response:
@@ -227,11 +233,11 @@ def create_session_for_tests(
     return token, csrf
 
 
-def valid_session_id(request: Request) -> str | None:
-    """Session id hash if the cookie names a live session (exists, not revoked, within timeouts), else None."""
+def valid_session_oid(request: Request) -> str | None:
+    """User oid if the cookie names a live session (exists, not revoked, within timeouts), else None."""
     cached = getattr(request.state, "principal", None)
     if cached is not None and cached.session_id:
-        return str(cached.session_id)
+        return str(cached.oid)
     token = request.cookies.get(SESSION_COOKIE)
     if not token:
         return None
@@ -246,7 +252,7 @@ def valid_session_id(request: Request) -> str | None:
             or now - sess.created_at > timedelta(hours=s.session_absolute_hours)
         ):
             return None
-        return sess.id_hash
+        return sess.oid
 
 
 def principal_from_request(request: Request) -> Principal:

@@ -43,7 +43,7 @@ dev: up ## run api, worker, mocks and web together
 	uv run --project backend honcho -f Procfile start
 
 api:
-	$(UV) uvicorn app.host.asgi:app --port 8000 --reload
+	$(UV) uvicorn app.host.asgi:app --port 8000 --proxy-headers --forwarded-allow-ips 127.0.0.1 --reload
 worker:
 	$(UV) python -m app.host.worker
 mocks:
