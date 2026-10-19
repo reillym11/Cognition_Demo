@@ -29,7 +29,7 @@ block update/delete), `approvals`, `policy`, `jobs` (Postgres `SKIP LOCKED` queu
 
 1. On the repo page click **Code > Codespaces > Create codespace on main** (4-core machine). The first start
    installs everything (a few minutes).
-2. In the Codespace terminal run `make demo-reset && make dev`.
+2. In the Codespace terminal run `make demo-reset && make dev` (Docker starts with the Codespace; give it a few seconds after the first start).
 3. Open the **Ports** tab and click the globe next to port **5173**, pick a role in **Sign in as** and click **Sign in**.
 
 Sign-in stays on the forwarded 5173 address (the Makefile sets `ITP_PUBLIC_BASE_URL` and `ITP_OIDC_BROWSER_ISSUER`

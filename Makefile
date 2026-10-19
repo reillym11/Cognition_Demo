@@ -31,7 +31,7 @@ up: ## start Postgres + mock OIDC (docker compose)
 down:
 	docker compose down
 
-migrate: ## apply migrations to the dev DB
+migrate: up ## apply migrations to the dev DB
 	cd backend && ITP_OWNER_DATABASE_URL=$(OWNER_URL) uv run alembic upgrade head
 
 migrate-test:
@@ -40,7 +40,7 @@ migrate-test:
 seed: ## load deterministic synthetic data (25k KYC, 100k transactions, ...)
 	$(UV) python -m app.host.cli seed
 
-demo-reset: ## drop + recreate dev DB, migrate, seed (target < 60 s)
+demo-reset: up ## drop + recreate dev DB, migrate, seed (target < 60 s); starts Postgres first
 	$(UV) python -m app.host.cli reset-db
 	$(MAKE) migrate
 	$(MAKE) seed
