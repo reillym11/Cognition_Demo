@@ -1,12 +1,18 @@
 """Document field extraction behind an interface. The bundled engine reads the PDF text layer with pdfplumber
 and pattern-matches labelled fields; confidence reflects how cleanly each field matched and whether totals
 reconcile. It is NOT OCR and makes no accuracy claim for scanned or real-world invoices; an AI extractor
-(e.g. Azure Document Intelligence) would implement the same `Extractor` protocol."""
+(e.g. Azure Document Intelligence) would implement the same `Extractor` protocol.
+
+Uploads are untrusted, so the PDF parser runs in a separate process with a wall-clock timeout and an address-space
+cap, rejects documents over a page limit and stops reading after a character limit."""
 
 import io
+import multiprocessing as mp
 import re
 from dataclasses import dataclass, field
 from datetime import date
+from multiprocessing.connection import Connection
+from multiprocessing.context import ForkServerContext, SpawnContext
 from typing import Any, Protocol
 
 import pdfplumber
@@ -29,6 +35,17 @@ class Extraction:
 
     def low_confidence(self, threshold: float) -> list[str]:
         return [k for k, f in self.fields.items() if f.confidence < threshold]
+
+
+class ExtractionLimitExceeded(ValueError):
+    """The document exceeded a page, time or memory limit and was not extracted."""
+
+
+MAX_PAGES = 20
+MAX_CHARS = 200_000
+TIMEOUT_SECONDS = 15.0
+MAX_MEMORY_BYTES = 1024 * 1024 * 1024
+_LIMIT = "limit"
 
 
 class Extractor(Protocol):
@@ -72,15 +89,106 @@ def _parse(key: str, raw: str) -> Any:
     return raw
 
 
+def _limit_memory(max_bytes: int) -> None:
+    try:
+        import resource
+
+        resource.setrlimit(resource.RLIMIT_AS, (max_bytes, max_bytes))
+    except (ImportError, ValueError, OSError):
+        pass
+
+
+def _caused_by_memory(e: BaseException | None) -> bool:
+    while e is not None:
+        if isinstance(e, MemoryError):
+            return True
+        e = e.__cause__ or e.__context__
+    return False
+
+
+def _read_text(content: bytes, conn: Connection, max_pages: int, max_chars: int, max_memory: int) -> None:
+    """Child-process entry point: sends ("ok", text, truncated), (_LIMIT, message) or ("error", type name)."""
+    try:
+        _limit_memory(max_memory)
+        with pdfplumber.open(io.BytesIO(content)) as pdf:
+            if len(pdf.pages) > max_pages:
+                conn.send((_LIMIT, f"PDF has more than {max_pages} pages"))
+                return
+            parts: list[str] = []
+            size = 0
+            for page in pdf.pages:
+                t = page.extract_text() or ""
+                parts.append(t)
+                size += len(t) + 1
+                if size > max_chars:
+                    break
+        text = "\n".join(parts)
+        conn.send(("ok", text[:max_chars], len(text) > max_chars))
+    except Exception as e:  # malformed PDF internals; only the type crosses the process boundary
+        if _caused_by_memory(e):
+            conn.send((_LIMIT, "PDF needs too much memory to read"))
+        else:
+            conn.send(("error", type(e).__name__))
+    finally:
+        conn.close()
+
+
+def _mp_context() -> ForkServerContext | SpawnContext:
+    if "forkserver" in mp.get_all_start_methods():
+        ctx = mp.get_context("forkserver")
+        ctx.set_forkserver_preload([__name__])
+        return ctx
+    return mp.get_context("spawn")
+
+
 class PdfTextExtractor:
     name = "pdf-text-v1"
 
+    def __init__(
+        self,
+        *,
+        max_pages: int = MAX_PAGES,
+        max_chars: int = MAX_CHARS,
+        timeout_seconds: float = TIMEOUT_SECONDS,
+        max_memory_bytes: int = MAX_MEMORY_BYTES,
+    ) -> None:
+        self.max_pages = max_pages
+        self.max_chars = max_chars
+        self.timeout_seconds = timeout_seconds
+        self.max_memory_bytes = max_memory_bytes
+
+    def _text(self, content: bytes) -> tuple[str, bool]:
+        ctx = _mp_context()
+        recv, send = ctx.Pipe(duplex=False)
+        proc = ctx.Process(
+            target=_read_text,
+            args=(content, send, self.max_pages, self.max_chars, self.max_memory_bytes),
+            name="pdf-extract",
+        )
+        proc.start()
+        send.close()
+        try:
+            if not recv.poll(self.timeout_seconds):
+                raise ExtractionLimitExceeded(f"PDF took longer than {self.timeout_seconds:g}s to read")
+            msg = recv.recv()
+        except EOFError:
+            raise ExtractionLimitExceeded("PDF reader exceeded its resource limits") from None
+        finally:
+            if proc.is_alive():
+                proc.kill()
+            proc.join()
+            recv.close()
+        if msg[0] == "ok":
+            return msg[1], msg[2]
+        if msg[0] == _LIMIT:
+            raise ExtractionLimitExceeded(msg[1])
+        raise ValueError(f"PDF parse failed: {msg[1]}")
+
     def extract(self, content: bytes) -> Extraction:
-        with pdfplumber.open(io.BytesIO(content)) as pdf:
-            text = "\n".join((page.extract_text() or "") for page in pdf.pages)
+        text, truncated = self._text(content)
         lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
         out: dict[str, ExtractedField] = {}
-        warnings: list[str] = []
+        warnings: list[str] = [f"text layer truncated at {self.max_chars} characters"] if truncated else []
         for key, labels in LABELS.items():
             best: ExtractedField | None = None
             for rank, label in enumerate(labels):

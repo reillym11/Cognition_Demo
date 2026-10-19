@@ -20,7 +20,7 @@ from app.foundation.authz import Principal, system_principal
 from app.foundation.datacls import mask_record
 from app.foundation.db import utcnow
 from app.foundation.errors import Conflict, Forbidden, Invalid, NotFound, require_reason
-from app.foundation.extraction import get_extractor
+from app.foundation.extraction import ExtractionLimitExceeded, get_extractor
 from app.foundation.models import ApprovalRequest
 from app.foundation.settings import get_settings
 from app.tools.ap.models import BankChange, Invoice, PaymentBatch, PurchaseOrder, Vendor
@@ -139,6 +139,8 @@ def ingest(db: Session, p: Principal, name: str, content: bytes, source: str = "
     )
     try:
         ex = get_extractor().extract(content)
+    except ExtractionLimitExceeded as e:
+        raise Invalid(f"PDF rejected: {e}", code="extract_limit") from e
     except Exception as e:  # malformed PDF internals
         raise Invalid("could not read the PDF text layer", code="extract_failed") from e
     vals = {k: fld.value for k, fld in ex.fields.items()}

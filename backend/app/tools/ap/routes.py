@@ -66,10 +66,11 @@ def list_invoices(
 
 
 @router.post("/invoices")
-async def upload(
+def upload(
     file: UploadFile = File(...), p: Principal = Depends(require("ap.upload")), db: Session = Depends(get_db)
 ) -> dict[str, Any]:
-    content = await file.read(files.MAX_BYTES + 1)
+    # sync def: FastAPI runs it in the threadpool, so parsing never blocks the event loop
+    content = file.file.read(files.MAX_BYTES + 1)
     return service.to_dict(service.ingest(db, p, file.filename or "upload.pdf", content, "upload"))
 
 
