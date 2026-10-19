@@ -3,10 +3,10 @@ import {
   ArrowUndo20Regular, ChatWarning20Regular, DocumentText20Regular, Flag20Regular, Home20Regular, MailInbox20Regular,
   PersonSearch20Regular, ShieldCheckmark20Regular, SignOut20Regular,
 } from "@fluentui/react-icons";
-import { useState, type ReactElement } from "react";
+import { Fragment, useState, type ReactElement } from "react";
 import { Link, NavLink, Navigate, Route, Routes, useLocation, useSearchParams } from "react-router-dom";
 import { http } from "../api/client";
-import { toolRoutes } from "../tools/registry";
+import { homeWidgets, toolRoutes } from "../tools/registry";
 import { ErrorBox } from "../ui/kit";
 import { AccessPage, AuditPage, InboxPage, JobsPage, PolicyPage } from "./admin";
 import { useMe } from "./me";
@@ -70,7 +70,7 @@ export function LoginPage() {
   return (
     <main className={s.loginMain}>
       <Card className={mergeClasses(s.login, "space-y-4")}>
-        <Title3 as="h1">Internal Tools</Title3>
+        <Title3 as="h1">Applications by Devin</Title3>
         <Body1>Choose a role to sign in. Demo environment, synthetic data only.</Body1>
         {err && (
           <div data-testid="login-error">
@@ -102,10 +102,10 @@ function Home() {
   return (
     <div className="space-y-4">
       <Title3 as="h1" block>Welcome, {me.data?.name}</Title3>
-      <Caption1 className={s.muted}>Roles: {me.data?.roles.join(", ")}</Caption1>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {me.data?.nav.map((n) => (
-          <Card key={n.path} className={s.tile} as="div">
+          <Fragment key={n.path}>
+          <Card className={s.tile} as="div">
             <Link to={n.path} className="flex items-center gap-3" style={{ color: "inherit", textDecoration: "none" }}>
               {iconFor(n.path)}
               <div>
@@ -114,6 +114,8 @@ function Home() {
               </div>
             </Link>
           </Card>
+          {homeWidgets.filter((w) => w.below === n.path).map((w) => <div key={w.below} className="col-span-full">{w.element}</div>)}
+          </Fragment>
         ))}
       </div>
     </div>
@@ -133,7 +135,7 @@ export function App() {
   return (
     <div className="flex min-h-screen flex-col">
       <header className={s.header}>
-        <Link to="/" className={s.brand}>Internal Tools</Link>
+        <Link to="/" className={s.brand}>Applications by Devin</Link>
         <Menu>
           <MenuTrigger disableButtonEnhancement>
             <button className="flex items-center gap-2" aria-label="Account">

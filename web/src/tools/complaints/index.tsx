@@ -4,9 +4,9 @@ import { useNavigate, useParams } from "react-router-dom";
 import { http } from "../../api/client";
 import { can, useMe } from "../../shell/me";
 import {
-  AuditTimeline, Badge, Button, Card, DataTable, ErrorBox, ExportButton, Field, KeyValues, MaskedField, Page, ReasonAction, Select, StageBar, dt, Input, Textarea, Choice, Checkbox, SearchBox, RecordTabs, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow,
+  AuditTimeline, Badge, Button, Card, DataTable, ErrorBox, ExportButton, Field, KeyValues, MaskedField, Page, ReasonAction, Select, StageBar, dt, Input, Textarea, Choice, Checkbox, SearchBox, RecordTabs, humanize, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow,
 } from "../../ui/kit";
-import type { ToolRoute } from "../registry";
+import type { HomeWidget, ToolRoute } from "../registry";
 
 type PathStage = { key: string; label: string; sla_hours: number; required: string[]; checklist: string[] };
 type Complaint = {
@@ -42,13 +42,13 @@ function Queue() {
         rowTestId="complaint-row"
         onRowClick={(r) => nav(`/complaints/${r.id}`)}
         columns={[
-          { key: "ref", label: "Ref", sortable: true },
+          { key: "ref", label: "Reference", sortable: true },
           { key: "received_at", label: "Received", sortable: true, render: (r) => dt(r.received_at) },
-          { key: "summary", label: "Summary", render: (r) => r.summary ?? <span className="text-slate-400">not triaged</span> },
-          { key: "stage", label: "Stage", render: (r) => <>{r.stage_label} {(r.regulatory || r.unfair_treatment) && <Badge tone="amber">reg</Badge>}</> },
+          { key: "summary", label: "Summary", render: (r) => r.summary ?? <span className="text-slate-400">Not triaged</span> },
+          { key: "stage", label: "Stage", render: (r) => <>{r.stage_label} {(r.regulatory || r.unfair_treatment) && <Badge tone="amber">Regulatory</Badge>}</> },
           { key: "stage_due_at", label: "Stage due", sortable: true, render: (r) => (r.stage_due_at ? <Badge tone={r.overdue ? "red" : "slate"}>{dt(r.stage_due_at)}</Badge> : "---") },
           { key: "assigned_name", label: "Assigned", render: (r) => r.assigned_name ?? "---" },
-          { key: "age_days", label: "Age (d)" },
+          { key: "age_days", label: "Age (days)" },
         ]}
       />
     </Page>
@@ -93,9 +93,9 @@ function StageForm({ c, meta, onSaved }: { c: Complaint; meta: Meta; onSaved: ()
     return k === "summary" ? <Input aria-label={FIELD_LABELS[k]} value={v} onChange={(e) => on(e.target.value)} /> : <Textarea aria-label={FIELD_LABELS[k]} rows={3} value={v} onChange={(e) => on(e.target.value)} />;
   };
   return (
-    <Card title={`Stage: ${stage.label} (SLA ${stage.sla_hours}h)`}>
+    <Card title={`Stage: ${stage.label} (SLA ${stage.sla_hours} h)`}>
       <div className="space-y-2">
-        {stage.required.map((k) => <Field key={k} label={`${FIELD_LABELS[k] ?? k} *`}>{input(k)}</Field>)}
+        {stage.required.map((k) => <Field key={k} label={`${FIELD_LABELS[k] ?? humanize(k)} *`}>{input(k)}</Field>)}
         {c.stage === "classify" && (
           <div className="flex gap-4 text-sm">
             <Checkbox checked={regs.regulatory} onChange={(e) => setRegs({ ...regs, regulatory: e.target.checked })} label={<>Regulatory</>} />
@@ -104,7 +104,7 @@ function StageForm({ c, meta, onSaved }: { c: Complaint; meta: Meta; onSaved: ()
           </div>
         )}
         {stage.checklist.map((k) => (
-          <Checkbox checked={!!checks[k]} onChange={(e) => setChecks({ ...checks, [k]: e.target.checked })} label={<>{k.replace(/_/g, " ")}</>} />
+          <Checkbox checked={!!checks[k]} onChange={(e) => setChecks({ ...checks, [k]: e.target.checked })} label={<>{humanize(k)}</>} />
         ))}
         <ErrorBox error={err} />
         <div className="flex gap-2">
@@ -137,16 +137,16 @@ function Detail() {
   const c = q.data;
   const reveal = (field: "customer_name" | "customer_email") => <MaskedField field={field} value={c[field]} revealUrl={`/api/complaints/${c.id}/reveal`} canReveal={!!c.can?.reveal} />;
   return (
-    <Page subtitle="Complaint" title={`${c.ref} · ${c.summary ?? "untriaged"}`} actions={c.can?.claim && <Button onClick={async () => { await http("POST", `/api/complaints/${c.id}/claim`); refresh(); }}>Claim</Button>}>
+    <Page subtitle="Complaint" title={`${c.ref} · ${c.summary ?? "Untriaged"}`} actions={c.can?.claim && <Button onClick={async () => { await http("POST", `/api/complaints/${c.id}/claim`); refresh(); }}>Claim</Button>}>
       {c.status === "open" ? <StageBar stages={c.path} current={c.stage} /> : <Badge tone="green">Closed</Badge>}
       <RecordTabs tabs={[{ key: "summary", label: "Summary", content: <>
       <div className="grid gap-4 lg:grid-cols-2">
         <Card title="Complaint">
           <KeyValues rows={[
-            ["Customer", reveal("customer_name")], ["Email", reveal("customer_email")], ["Channel", c.channel], ["Received", dt(c.received_at)],
+            ["Customer", reveal("customer_name")], ["Email", reveal("customer_email")], ["Channel", humanize(c.channel)], ["Received", dt(c.received_at)],
             ["Stage due", c.stage_due_at ? <Badge tone={c.overdue ? "red" : "slate"}>{dt(c.stage_due_at)}</Badge> : "---"],
             ["Assigned", c.assigned_name ?? "---"], ["Product", c.product ?? "---"], ["Category", c.category ?? "---"],
-            ["Tags", <>{c.regulatory && <Badge tone="amber">regulatory</Badge>} {c.unfair_treatment && <Badge tone="amber">unfair treatment</Badge>}</>],
+            ["Tags", <>{c.regulatory && <Badge tone="amber">Regulatory</Badge>} {c.unfair_treatment && <Badge tone="amber">Unfair treatment</Badge>}</>],
             ["Root cause", c.root_cause ?? "---"], ["Resolution", c.resolution ?? "---"], ["Compliance notes", c.compliance_notes ?? "---"],
             ["Description", c.description],
           ]} />
@@ -154,12 +154,13 @@ function Detail() {
         <div className="space-y-4">
           {(c.can?.work || c.can?.compliance) && <StageForm key={c.stage} c={c} meta={meta.data} onSaved={refresh} />}
           <Card title="Related cases">
-            <ul className="text-sm">{c.related.map((r) => <li key={`${r.kind}${r.id}`}><a className="text-blue-700 underline" href={r.kind === "kyc" ? `/kyc/cases/${r.id}` : `/refunds/requests/${r.id}`}>{r.kind} #{r.id}</a></li>)}</ul>
+            <ul className="text-sm">{c.related.map((r) => <li key={`${r.kind}${r.id}`}><a className="text-blue-700 underline" href={r.kind === "kyc" ? `/kyc/cases/${r.id}` : `/refunds/requests/${r.id}`}>{r.kind === "kyc" ? "KYC case" : "Refund"} {r.id}</a></li>)}</ul>
+            {c.related.length === 0 && <p className="text-sm text-slate-500">No linked cases.</p>}
             {c.can?.work && (
               <ReasonAction label="Link case" extra={
                 <div className="flex gap-2">
-                  <Choice aria-label="Link kind" value={link.kind} onChange={(e) => setLink({ ...link, kind: e.target.value })}><option value="refund">refund</option><option value="kyc">kyc</option></Choice>
-                  <Input aria-label="Link id" value={link.id} onChange={(e) => setLink({ ...link, id: e.target.value })} placeholder="id" />
+                  <Choice aria-label="Link kind" value={link.kind} onChange={(e) => setLink({ ...link, kind: e.target.value })}><option value="refund">Refund</option><option value="kyc">KYC case</option></Choice>
+                  <Input aria-label="Link id" value={link.id} onChange={(e) => setLink({ ...link, id: e.target.value })} placeholder="Record ID" />
                 </div>
               } onSubmit={async (reason) => { await http("POST", `/api/complaints/${c.id}/links`, { kind: link.kind, id: Number(link.id), reason }); refresh(); }} />
             )}
@@ -176,7 +177,7 @@ function Aging() {
   if (!q.data) return <ErrorBox error={q.error} />;
   const max = Math.max(1, ...q.data.buckets.map((b) => b.count));
   return (
-    <Page title="Complaint aging">
+    <section className="space-y-3" data-testid="complaint-aging" aria-label="Complaint aging">
       <div className="grid gap-4 sm:grid-cols-3">
         <Card title="Open"><p className="text-2xl font-semibold">{q.data.open}</p></Card>
         <Card title="Regulatory open"><p className="text-2xl font-semibold">{q.data.regulatory_open}</p></Card>
@@ -198,12 +199,13 @@ function Aging() {
           <TableBody>{q.data.stages.map((s) => <TableRow key={s.stage} className="border-t"><TableCell className="py-1">{s.label}</TableCell><TableCell>{s.open}</TableCell><TableCell className={s.overdue ? "font-semibold text-red-700" : ""}>{s.overdue}</TableCell></TableRow>)}</TableBody>
         </Table>
       </Card>
-    </Page>
+    </section>
   );
 }
 
+export const homeWidgets: HomeWidget[] = [{ below: "/complaints", element: <Aging /> }];
+
 export const routes: ToolRoute[] = [
   { path: "/complaints", element: <Queue /> },
-  { path: "/complaints/aging", element: <Aging /> },
   { path: "/complaints/:id", element: <Detail /> },
 ];

@@ -22,7 +22,6 @@ MANIFEST = ToolManifest(
     router=router,
     nav=[
         NavItem("/complaints", "Complaints", "complaints.read"),
-        NavItem("/complaints/aging", "Complaint aging", "complaints.read"),
     ],
     classifications={
         "complaint": {"customer_name": C.PII, "customer_email": C.PII, "description": C.INTERNAL}

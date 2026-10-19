@@ -1,4 +1,4 @@
-# Internal Tools Platform — Devin-built prototype
+# Applications by Devin: internal tools platform prototype
 
 A working prototype that tests whether a regulated fintech can replace (or complement) Power Apps internal tools with
 tools built by Devin on one shared platform. It is **not** a UI clone: the point is the controls underneath — one
@@ -14,7 +14,7 @@ Everything runs on localhost with **synthetic data only** (Faker, fixed seeds, `
 | **KYC review** (~25k cases) | Server-side filter/sort/paging, claim races, SLA timers, four-eyes decisions (every case needs two people), senior review for high risk, audited auto-clear fast lane with versioned criteria + daily 2% QA sample, region row isolation, masked PII with audited reveal, 5-year retention class |
 | **Refunds** (~100k transactions) | Integer cents, cumulative reservation under row lock (pending refunds count), threshold approval by a different person, velocity flag, idempotent execution, unknown-outcome reconciliation, processor fault injection, mock Teams notice |
 | **Feature flags** (thin) | dev/staging/prod, % rollout + simple targeting, deterministic bucketing, explicit missing defaults, prod changes need a second person, full diff history, stale-flag report job |
-| **Complaints** (~8k) | Reusable stage engine: per-stage required fields, checklists, SLAs, one-level regulatory branch to compliance review with separation of duties, root-cause taxonomy, KYC/refund links, aging dashboard, register CSV |
+| **Complaints** (~8k) | Reusable stage engine: per-stage required fields, checklists, SLAs, one-level regulatory branch to compliance review with separation of duties, root-cause taxonomy, KYC/refund links, aging summary on the home page, register CSV |
 | **AP invoices** | PDF intake (upload + mock inbox) with validation/active-content rejection, text-layer field extraction with confidence, human verification, duplicate + vendor/PO match, tiered sequential approvals, call-back-verified bank changes (3 different people), audited SHA-256 payment batches |
 
 Shared foundation (`backend/app/foundation/`): `auth` (OIDC + PKCE, opaque server sessions, CSRF, idle/absolute

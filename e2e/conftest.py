@@ -33,7 +33,7 @@ def start_login(page: Page, persona: str) -> None:
 
 def login(page: Page, persona: str) -> None:
     start_login(page, persona)
-    expect(page.get_by_role("link", name="Internal Tools")).to_be_visible()
+    expect(page.get_by_role("link", name="Applications by Devin")).to_be_visible()
 
 
 @pytest.fixture
