@@ -223,6 +223,8 @@ def _match(db: Session, inv: Invoice) -> None:
         if inv.po_number
         else None
     )
+    if any(c is not None and c < 0 for c in (inv.subtotal_cents, inv.tax_cents, inv.total_cents)):
+        issues.append("negative_amount")
     remaining = None
     if po is None:
         issues.append("po_not_found")
@@ -373,6 +375,8 @@ def on_invoice_approved(db: Session, req: ApprovalRequest) -> None:
     ).scalar_one()
     tol = int(policy.get(db, "ap.po_tolerance_bps"))
     total = inv.total_cents or 0
+    if total < 0:
+        raise Conflict("negative invoice totals cannot be approved")
     if total * 10_000 > (po.amount_cents - po.invoiced_cents) * (10_000 + tol):
         raise Conflict("PO no longer has enough remaining value for this invoice")
     po.invoiced_cents += total
