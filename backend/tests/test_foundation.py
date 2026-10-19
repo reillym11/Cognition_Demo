@@ -87,6 +87,57 @@ def test_role_revocation_takes_effect_mid_session(login, directory, monkeypatch)
     assert c.get("/api/me").status_code == 401
 
 
+def test_directory_cannot_add_roles_the_token_did_not_carry(login, directory, monkeypatch):
+    from app.foundation.settings import get_settings
+
+    monkeypatch.setattr(get_settings(), "roles_revalidate_seconds", 0)
+    c = login("aud.auditor")
+    oid = "00000000-0000-4000-8000-000000000011"
+    before = directory.entries[oid]
+    directory.entries[oid] = before.__class__(oid, True, [*before.roles, "Platform.Admin"])
+    me = c.get("/api/me").json()
+    assert me["roles"] == sorted(before.roles)
+    assert "Platform.Admin" not in me["roles"]
+
+
+def test_mock_directory_and_admin_require_api_key():
+    from fastapi.testclient import TestClient
+
+    from app.foundation.settings import get_settings
+    from mocks import app as mocks
+
+    m = TestClient(mocks.app)
+    oid = "00000000-0000-4000-8000-000000000011"
+    good = {"Authorization": f"Bearer {get_settings().directory_api_key}"}
+    bad = {"Authorization": "Bearer wrong"}
+    for h in ({}, bad):
+        assert m.get(f"/directory/users/{oid}", headers=h).status_code == 401
+        assert (
+            m.patch(f"/directory/users/{oid}", json={"appRoles": ["Platform.Admin"]}, headers=h).status_code
+            == 401
+        )
+        assert m.post("/admin/reset", headers=h).status_code == 401
+        assert m.post("/admin/faults", json={"name": "x", "mode": "timeout"}, headers=h).status_code == 401
+    assert "Platform.Admin" not in m.get(f"/directory/users/{oid}", headers=good).json()["appRoles"]
+
+
+def test_http_directory_sends_api_key(monkeypatch):
+    import httpx
+    from fastapi.testclient import TestClient
+
+    from app.foundation.adapters.directory import HttpDirectory
+    from app.foundation.settings import get_settings
+    from mocks import app as mocks
+
+    m = TestClient(mocks.app)
+    monkeypatch.setattr(httpx, "get", lambda url, **kw: m.get(url, **kw))
+    oid = "00000000-0000-4000-8000-000000000011"
+    entry = HttpDirectory("http://testserver", get_settings().directory_api_key).lookup(oid)
+    assert entry is not None and entry.enabled
+    with pytest.raises(httpx.HTTPStatusError):
+        HttpDirectory("http://testserver", "wrong").lookup(oid)
+
+
 def test_idle_timeout(login, monkeypatch):
     from app.foundation.settings import get_settings
 
