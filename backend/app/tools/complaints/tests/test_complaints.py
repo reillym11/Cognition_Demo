@@ -102,7 +102,7 @@ def test_regulatory_branch_needs_compliance_and_different_person(directory):
         assert service.get(db, cid).assigned_to == principal("hana.handler").oid
 
 
-def test_compliance_review_freezes_reviewed_fields():
+def test_compliance_review_freezes_reviewed_fields(directory):
     cid = make()
     run_to_resolve(cid, True)
     step(cid, "hana.handler", {"resolution": "credited"})
