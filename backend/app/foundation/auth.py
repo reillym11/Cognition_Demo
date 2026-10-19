@@ -85,15 +85,15 @@ def _login_error(code: str) -> RedirectResponse:
 def login(request: Request, return_to: str | None = None, login_hint: str | None = None) -> RedirectResponse:
     s = get_settings()
     meta = _oidc_metadata()["meta"]
-    state, nonce, verifier, binding = (secrets.token_urlsafe(32) for _ in range(4))
+    state, nonce, verifier = (secrets.token_urlsafe(32) for _ in range(3))
+    # Reuse this browser's binding so a repeated or overlapping sign-in (double click, back button, switching role)
+    # does not invalidate the flow the browser is actually completing. Each state is still single-use.
+    binding = request.cookies.get(LOGIN_BINDING_COOKIE) or secrets.token_urlsafe(32)
     client = _hash(signin_client_key(request))
     with session_scope() as db:
         db.execute(
             delete(OidcLoginState).where(OidcLoginState.created_at < datetime.now(UTC) - LOGIN_STATE_TTL)
         )
-        # A browser restarting sign-in gets a new binding cookie, so its earlier pending state is dead anyway.
-        if prior := request.cookies.get(LOGIN_BINDING_COOKIE):
-            db.execute(delete(OidcLoginState).where(OidcLoginState.browser_binding == _hash(prior)))
         # Make room by evicting the oldest pending states, never by refusing: first this client's own, then (only
         # if many distinct clients together exceed the storage bound) the oldest overall.
         _evict_oldest(db, s.oidc_pending_logins_per_client, OidcLoginState.client_key == client)

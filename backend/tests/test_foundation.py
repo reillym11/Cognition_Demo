@@ -586,16 +586,19 @@ def _started_signin(r) -> bool:
     return r.status_code == 303 and r.headers["location"].startswith("http://idp.test/authorize?")
 
 
-def test_login_replaces_same_browser_state(app, fake_oidc_metadata):
+def test_overlapping_signins_in_one_browser_share_binding_and_stay_valid(app, fake_oidc_metadata):
     from fastapi.testclient import TestClient
 
     from app.foundation import auth
 
     browser = TestClient(app, follow_redirects=False)
+    bindings = set()
     for _ in range(3):
         assert _started_signin(browser.get("/api/auth/login"))
-        assert browser.cookies.get(auth.LOGIN_BINDING_COOKIE, path="/api/auth")
-    assert _pending_states() == 1
+        bindings.add(browser.cookies.get(auth.LOGIN_BINDING_COOKIE, path="/api/auth"))
+    # A repeated sign-in (double click, back button, switching role) must not invalidate the earlier flow.
+    assert len(bindings) == 1 and None not in bindings
+    assert _pending_states() == 3
 
 
 def test_one_client_flood_only_evicts_its_own_pending_states(app, fake_oidc_metadata, monkeypatch):
