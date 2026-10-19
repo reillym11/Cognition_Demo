@@ -82,7 +82,7 @@ def approvals_inbox(
     ).scalars()
     out = []
     for r in rows:
-        ok, _ = approvals.can_decide(r, p)
+        ok, _ = approvals.can_decide(db, r, p)
         if ok:
             out.append(approvals.to_dict(r, approvals.decisions_for(db, r.id), p))
     return out
@@ -108,7 +108,7 @@ def approval_get(
     r = db.get(ApprovalRequest, request_id)
     if r is None:
         raise NotFound("approval request not found")
-    ok, _ = approvals.can_decide(r, p)
+    ok, _ = approvals.can_decide(db, r, p)
     if not (ok or r.requested_by == p.oid or p.has("core.audit.read")):
         raise NotFound("approval request not found")
     return approvals.to_dict(r, approvals.decisions_for(db, r.id), p)

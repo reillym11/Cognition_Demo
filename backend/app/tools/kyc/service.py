@@ -207,6 +207,11 @@ def _write_decision(
     )
 
 
+def can_view_decision(db: Session, req: ApprovalRequest, p: Principal) -> bool:
+    q = scoped(select(KycCase.id).where(KycCase.id == int(req.payload["case_id"])), p)
+    return db.execute(q).scalar_one_or_none() is not None
+
+
 def on_decision_approved(db: Session, req: ApprovalRequest) -> None:
     c = db.execute(select(KycCase).where(KycCase.id == req.payload["case_id"]).with_for_update()).scalar_one()
     last = approvals.decisions_for(db, req.id)[-1]

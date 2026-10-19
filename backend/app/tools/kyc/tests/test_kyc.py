@@ -208,6 +208,35 @@ def test_region_row_scope_and_masking(login):
     assert login("cora.compliance").get(f"/api/kyc/cases/{eu}").status_code == 200
 
 
+def test_out_of_region_approver_cannot_see_or_decide(login):
+    from dataclasses import replace
+
+    eu = make_case(region="EU")
+    eu_preparer = replace(principal("avery.analyst"), region="EU")
+    with session_scope() as db:
+        service.claim(db, eu_preparer, eu)
+    with session_scope() as db:
+        service.recommend(db, eu_preparer, eu, "approve", "DOCS_VERIFIED", "docs match")
+    with session_scope() as db:
+        rid = approvals.open_for_subject(db, service.RES, eu).id
+
+    us = login("ana.analyst")
+    assert rid not in {r["id"] for r in us.get("/api/approvals/inbox").json()}
+    assert us.get(f"/api/approvals/{rid}").status_code == 404
+    r = us.post(f"/api/approvals/{rid}/decide", json={"decision": "approve", "reason": "looks fine"})
+    assert r.status_code == 403
+    with session_scope() as db, pytest.raises(Forbidden):
+        approvals.decide(db, principal("ana.analyst"), rid, "approve", "looks fine")
+    with session_scope() as db:
+        assert db.get(KycCase, eu).status == "pending_decision"
+
+    eu_decider = replace(principal("ana.analyst"), region="EU")
+    with session_scope() as db:
+        approvals.decide(db, eu_decider, rid, "approve", "agree")
+    with session_scope() as db:
+        assert db.get(KycCase, eu).status == "approved"
+
+
 def test_reveal_is_audited_and_permissioned(login):
     cid = make_case()
     r = login("ana.analyst").post(

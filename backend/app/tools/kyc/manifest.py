@@ -70,6 +70,7 @@ MANIFEST = ToolManifest(
             on_approved=service.on_decision_approved,
             on_rejected=service.on_decision_returned,
             label="KYC decision",
+            can_view=service.can_view_decision,
         )
     },
     seed=seed.seed,
