@@ -38,7 +38,11 @@ class Settings(BaseSettings):
     # Per client IP for /api/auth/login and /callback. Needs the real client IP (uvicorn --proxy-headers with
     # --forwarded-allow-ips set to the proxy only), otherwise everyone behind the proxy shares one bucket.
     rate_limit_signin: str = "120/minute"
-    # Global cap on unexpired OidcLoginState rows; /login refuses new sign-ins (signin_busy) above it.
+    # Unexpired OidcLoginState rows kept per sign-in client key (IP, or IPv6 /64). /login evicts that client's
+    # oldest pending states beyond this, so one client can never hold more than this many rows.
+    oidc_pending_logins_per_client: int = 10
+    # Storage bound on all unexpired OidcLoginState rows. /login evicts the oldest rows (FIFO) beyond it rather than
+    # refusing, so a flood can only shorten other people's pending windows, never block a new sign-in.
     oidc_pending_login_cap: int = 5000
     worker_poll_seconds: float = 0.5
     disable_scheduler: bool = False

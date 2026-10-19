@@ -32,8 +32,10 @@ class OidcLoginState(Base):
     nonce: Mapped[str] = mapped_column(String(64))
     code_verifier: Mapped[str] = mapped_column(String(128))
     browser_binding: Mapped[str] = mapped_column(String(64))
+    # sha256 of ratelimit.signin_client_key, so the per-client pending cap needs no raw IP stored.
+    client_key: Mapped[str] = mapped_column(String(64), index=True)
     return_to: Mapped[str] = mapped_column(String(300), default="/")
-    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow, index=True)
 
 
 class AuditEvent(Base):
