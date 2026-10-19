@@ -208,6 +208,25 @@ def test_concurrent_requests_never_exceed_captured():
         assert service.reserved_cents(db, txn) == 90_000
 
 
+def test_concurrent_requests_on_distinct_charges_respect_velocity():
+    txns = [make_txn(100_000) for _ in range(20)]
+    barrier = threading.Barrier(len(txns))
+    ids: list[int] = []
+
+    def go(txn: int) -> None:
+        barrier.wait()
+        ids.append(request(txn, 100))
+
+    threads = [threading.Thread(target=go, args=(t,)) for t in txns]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    with session_scope() as db:
+        rows = db.execute(select(Refund).where(Refund.id.in_(ids))).scalars().all()
+        assert len(rows) == 20
+        assert sum(1 for r in rows if r.status == "approved") == 10  # refunds.velocity max_requests
+        assert sum(1 for r in rows if r.velocity_flag) == 10
+
+
 @settings(max_examples=25, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
 @given(
     st.lists(st.integers(min_value=1, max_value=40_000), min_size=1, max_size=12),
