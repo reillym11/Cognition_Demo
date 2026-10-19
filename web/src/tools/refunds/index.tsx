@@ -4,7 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { http } from "../../api/client";
 import { can, useMe } from "../../shell/me";
 import {
-  ApprovalPanel, AuditTimeline, Badge, Card, DataTable, ErrorBox, ExportButton, Field, KeyValues, MaskedField, Page, ReasonAction, Select, dt, type Approval, Input, Choice, SearchBox, RecordTabs, Table, TableBody, TableCell, TableRow,
+  ApprovalPanel, AuditTimeline, Badge, Card, DataTable, ErrorBox, ExportButton, Field, KeyValues, MaskedField, Page, ReasonAction, Select, dt, type Approval, Input, Choice, SearchBox, RecordTabs, humanize, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow,
 } from "../../ui/kit";
 import type { ToolRoute } from "../registry";
 
@@ -19,6 +19,10 @@ type Refund = {
 };
 
 const usd = (c: number) => `$${(c / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const STATUS_LABEL: Record<string, string> = {
+  pending_approval: "Pending approval", approved: "Approved (executing)", unknown: "Unknown outcome", succeeded: "Succeeded", failed: "Failed", rejected: "Rejected",
+};
+const statusLabel = (s: string) => STATUS_LABEL[s] ?? humanize(s);
 const tone = (s: string) =>
   (s === "succeeded" ? "green" : s === "failed" || s === "rejected" ? "red" : s === "unknown" ? "amber" : "blue") as "green" | "red" | "amber" | "blue";
 
@@ -83,7 +87,7 @@ function TransactionDetail() {
                   <Field label="Reason code">
                     <Choice  aria-label="Reason code" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })}>
                       <option value="">Choose…</option>
-                      {q.data.reason_codes.map((c) => <option key={c}>{c}</option>)}
+                      {q.data.reason_codes.map((c) => <option key={c} value={c}>{humanize(c)}</option>)}
                     </Choice>
                   </Field>
                 </div>
@@ -100,15 +104,16 @@ function TransactionDetail() {
       </div>
       <Card title="Refunds on this charge">
         <Table size="small" className="min-w-full text-sm">
+          {q.data.refunds.length > 0 && <TableHeader className="text-left text-xs uppercase text-slate-500"><TableRow><TableHeaderCell>Refund</TableHeaderCell><TableHeaderCell>Amount</TableHeaderCell><TableHeaderCell>Status</TableHeaderCell><TableHeaderCell>Requested by</TableHeaderCell><TableHeaderCell>Created</TableHeaderCell></TableRow></TableHeader>}
           <TableBody>
             {q.data.refunds.map((r) => (
               <TableRow key={r.id} className="cursor-pointer border-t hover:bg-blue-50" onClick={() => nav(`/refunds/requests/${r.id}`)}>
-                <TableCell className="px-2 py-1">#{r.id}</TableCell><TableCell>{r.amount}</TableCell><TableCell><Badge tone={tone(r.status)}>{r.status}</Badge></TableCell><TableCell>{r.requested_by_name}</TableCell><TableCell>{dt(r.created_at)}</TableCell>
+                <TableCell className="px-2 py-1">Refund {r.id}</TableCell><TableCell>{r.amount}</TableCell><TableCell><Badge tone={tone(r.status)}>{statusLabel(r.status)}</Badge></TableCell><TableCell>{r.requested_by_name}</TableCell><TableCell>{dt(r.created_at)}</TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
-        {q.data.refunds.length === 0 && <p className="text-sm text-slate-500">None yet.</p>}
+        {q.data.refunds.length === 0 && <p className="text-sm text-slate-500">No refunds on this charge yet.</p>}
       </Card>
     </Page>
   );
@@ -123,7 +128,7 @@ function Requests() {
     <Page title="Refund requests" actions={can(me.data, "refunds.export") && <ExportButton url="/api/refunds/export" params={f} />}>
       <div className="grid grid-cols-2 gap-2 md:grid-cols-6" data-testid="refund-totals">
         {["pending_approval", "approved", "unknown", "succeeded", "failed", "rejected"].map((s) => (
-          <Card key={s}><div className="text-xs uppercase text-slate-500">{s}</div><div className="text-lg font-semibold">{stats.data?.[s]?.total ?? "$0.00"}</div><div className="text-xs">{stats.data?.[s]?.count ?? 0} refunds</div></Card>
+          <Card key={s}><div className="text-xs uppercase text-slate-500">{statusLabel(s)}</div><div className="text-lg font-semibold">{stats.data?.[s]?.total ?? "$0.00"}</div><div className="text-xs">{stats.data?.[s]?.count ?? 0} refunds</div></Card>
         ))}
       </div>
       <div className="flex flex-wrap items-end gap-3">
@@ -136,11 +141,11 @@ function Requests() {
         rowTestId="refund-row"
         onRowClick={(r) => nav(`/refunds/requests/${r.id}`)}
         columns={[
-          { key: "id", label: "#", sortable: true },
+          { key: "id", label: "ID", sortable: true },
           { key: "charge_id", label: "Charge" },
           { key: "amount_cents", label: "Amount", sortable: true, render: (r) => r.amount },
-          { key: "status", label: "Status", render: (r) => <Badge tone={tone(r.status)}>{r.status}</Badge> },
-          { key: "velocity_flag", label: "Flags", render: (r) => (r.velocity_flag ? <Badge tone="amber">velocity</Badge> : r.needs_approval ? <Badge>2nd person</Badge> : "---") },
+          { key: "status", label: "Status", render: (r) => <Badge tone={tone(r.status)}>{statusLabel(r.status)}</Badge> },
+          { key: "velocity_flag", label: "Flags", render: (r) => (r.velocity_flag ? <Badge tone="amber">Velocity</Badge> : r.needs_approval ? <Badge>Second approver</Badge> : "---") },
           { key: "requested_by_name", label: "Requested by" },
           { key: "created_at", label: "Created", sortable: true, render: (r) => dt(r.created_at) },
         ]}
@@ -158,12 +163,12 @@ function RequestDetail() {
   if (!q.data) return <ErrorBox error={q.error} />;
   const r = q.data.refund;
   return (
-    <Page subtitle="Refund request" title={`Refund #${r.id}`} status={<Badge tone={tone(r.status)}>{r.status}</Badge>}>
+    <Page subtitle="Refund request" title={`Refund ${r.id}`} status={<Badge tone={tone(r.status)}>{statusLabel(r.status)}</Badge>}>
       <RecordTabs tabs={[{ key: "summary", label: "Summary", content: <>
       <Card>
         <KeyValues rows={[
-          ["Charge", r.charge_id], ["Merchant", r.merchant], ["Amount", r.amount], ["Reason", `${r.reason_code}: ${r.reason}`],
-          ["Requested by", r.requested_by_name], ["Second person needed", r.approval_why ?? "no (under threshold)"],
+          ["Charge", r.charge_id], ["Merchant", r.merchant], ["Amount", r.amount], ["Reason", `${humanize(r.reason_code)}: ${r.reason}`],
+          ["Requested by", r.requested_by_name], ["Second person needed", r.approval_why ?? "No (under threshold)"],
           ["Processor ref", r.processor_ref ?? "---"], ["Attempts", r.attempts], ["Last error", r.last_error ?? "---"], ["Executed", dt(r.executed_at)],
         ]} />
         {r.status === "unknown" && can(me.data, "refunds.reconcile") && (
