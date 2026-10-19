@@ -8,6 +8,7 @@ from app.foundation import approvals, audit, files
 from app.foundation.db import session_scope
 from app.foundation.errors import Conflict, Forbidden, Invalid
 from app.foundation.extraction import PdfTextExtractor
+from app.foundation.models import ApprovalRequest
 from app.foundation.money import parse_cents
 from app.foundation.settings import get_settings
 from app.tools.ap import pdfgen, service
@@ -84,6 +85,32 @@ def test_garbled_field_needs_verification_then_matches(vendor_po):
     with session_scope() as db:
         service.verify(db, principal("cleo.clerk"), iid, {"total_cents": 220_000}, "checked against PDF")
     assert status(iid) == "matched"
+
+
+def test_every_verifier_is_excluded_from_approving(vendor_po):
+    from dataclasses import replace
+
+    from app.foundation.registry import get_registry
+
+    roles = frozenset({"AP.Clerk", "AP.Approver"})
+    dual = replace(principal("abe.approver"), roles=roles, permissions=get_registry().permissions_for(roles))
+    iid = ingest(pdf(number="SOD1", garble=["invoice_date", "total"]))
+    with session_scope() as db:
+        service.verify(db, dual, iid, {"invoice_date": "2026-10-01"}, "checked date against PDF")
+    assert status(iid) != "matched"
+    with session_scope() as db:  # a later verifier must not clear the earlier one's exclusion
+        service.verify(db, principal("cleo.clerk"), iid, {"total_cents": 220_000}, "checked total")
+        service.submit(db, principal("cleo.clerk"), iid, "ready to pay")
+        rid = service.get(db, iid).approval_request_id
+        assert (
+            dual.oid
+            in approvals.Requirement.from_json(db.get(ApprovalRequest, rid).requirement).excluded_users
+        )
+    with session_scope() as db, pytest.raises(Forbidden):
+        approvals.decide(db, dual, rid, "approve", "I set the date")
+    with session_scope() as db:
+        approvals.decide(db, principal("cam.controller"), rid, "approve", "independent check")
+    assert status(iid) == "approved"
 
 
 def test_duplicates_by_file_and_by_number(vendor_po):

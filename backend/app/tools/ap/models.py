@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import JSON, Date, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import ARRAY, JSON, Date, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.foundation.db import Base, utcnow
@@ -58,6 +58,7 @@ class Invoice(Base):
     approval_request_id: Mapped[int | None] = mapped_column(Integer)
     uploaded_by: Mapped[str] = mapped_column(String(80))
     verified_by: Mapped[str | None] = mapped_column(String(80))
+    touched_by: Mapped[list[str]] = mapped_column(ARRAY(String(80)), default=list)
     batch_id: Mapped[int | None] = mapped_column(Integer, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
