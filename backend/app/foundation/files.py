@@ -2,10 +2,12 @@
 content-addressed storage with SHA-256, integrity check on read, retention metadata, audit."""
 
 import hashlib
+import io
 import re
 from datetime import timedelta
 from pathlib import Path
 
+import pikepdf
 from sqlalchemy.orm import Session
 
 from app.foundation import audit
@@ -18,16 +20,27 @@ from app.foundation.settings import get_settings
 
 MAX_BYTES = 10 * 1024 * 1024
 MAGIC = {"application/pdf": b"%PDF-"}
-# PDF features that execute or smuggle content; invoices never need them
-ACTIVE_CONTENT = (
-    b"/JavaScript",
-    b"/JS",
-    b"/Launch",
-    b"/EmbeddedFile",
-    b"/OpenAction",
-    b"/AA",
-    b"/RichMedia",
-    b"/XFA",
+# PDF features that execute or smuggle content; invoices never need them. Matched as decoded names
+# (dictionary keys or name values) anywhere in the parsed object graph, never as raw bytes.
+ACTIVE_CONTENT = frozenset(
+    {
+        "/JavaScript",
+        "/JS",
+        "/Launch",
+        "/EmbeddedFile",
+        "/EmbeddedFiles",
+        "/EF",
+        "/OpenAction",
+        "/AA",
+        "/RichMedia",
+        "/RichMediaContent",
+        "/XFA",
+        "/GoToE",
+        "/GoToR",
+        "/SubmitForm",
+        "/ImportData",
+        "/Rendition",
+    }
 )
 _NAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
 
@@ -51,12 +64,48 @@ def validate(content: bytes) -> str:
     if len(content) > MAX_BYTES:
         raise Invalid(f"file exceeds {MAX_BYTES // (1024 * 1024)} MB", code="file_too_large")
     ctype = sniff(content)
-    for marker in ACTIVE_CONTENT:
-        if re.search(re.escape(marker) + rb"[\s/<(\[]", content):
-            raise Invalid(
-                "PDF contains active or embedded content and was rejected", code="file_active_content"
-            )
+    _reject_active_content(content)
     return ctype
+
+
+def _active(obj: object, seen: set[tuple[int, int]]) -> bool:
+    """Walk direct objects; each indirect object is visited once (the caller iterates the full object table)."""
+    if not isinstance(obj, pikepdf.Object):  # numbers, booleans, null come back as Python scalars
+        return False
+    if obj.is_indirect:
+        if obj.objgen in seen:
+            return False
+        seen.add(obj.objgen)
+    if isinstance(obj, pikepdf.Name):
+        return str(obj) in ACTIVE_CONTENT
+    if isinstance(obj, pikepdf.Stream):
+        obj = obj.stream_dict
+    if isinstance(obj, pikepdf.Dictionary):
+        for key, child in obj.items():
+            if str(key) in ACTIVE_CONTENT or _active(child, seen):
+                return True
+    elif isinstance(obj, pikepdf.Array):
+        return any(_active(child, seen) for child in obj)
+    return False
+
+
+def _reject_active_content(content: bytes) -> None:
+    rejected = Invalid("PDF contains active or embedded content and was rejected", code="file_active_content")
+    try:
+        # qpdf decodes #xx name escapes, comments/whitespace and object streams before we inspect names
+        with pikepdf.open(io.BytesIO(content)) as pdf:
+            # Fail closed on anything a different reader might parse differently: repaired or encrypted files
+            if pdf.get_warnings() or pdf.is_encrypted:
+                raise Invalid("PDF is damaged or encrypted and was rejected", code="file_malformed")
+            seen: set[tuple[int, int]] = set()
+            if _active(pdf.trailer, seen) or any(_active(o, seen) for o in pdf.objects):
+                raise rejected
+            if pdf.get_warnings():
+                raise Invalid("PDF is damaged and was rejected", code="file_malformed")
+    except Invalid:
+        raise
+    except Exception as e:  # any parser failure fails closed
+        raise Invalid("PDF could not be parsed and was rejected", code="file_malformed") from e
 
 
 def _path(sha: str) -> Path:

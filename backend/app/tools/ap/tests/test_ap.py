@@ -1,6 +1,8 @@
 import base64
+import io
 
 import httpx
+import pikepdf
 import pytest
 from sqlalchemy import select
 
@@ -170,11 +172,39 @@ def test_batch_only_includes_approved_and_is_audited(vendor_po):
         service.create_batch(db, principal("cam.controller"), "nothing left")
 
 
+def raw_pdf(*bodies: bytes, trailer_extra: bytes = b"") -> bytes:
+    """Hand-built PDF with a correct xref, so encodings the writer would normalise survive verbatim."""
+    out = bytearray(b"%PDF-1.7\n")
+    offsets = []
+    for n, body in enumerate(bodies, start=1):
+        offsets.append(len(out))
+        out += b"%d 0 obj\n" % n + body + b"\nendobj\n"
+    xref = len(out)
+    out += b"xref\n0 %d\n0000000000 65535 f \n" % (len(bodies) + 1)
+    out += b"".join(b"%010d 00000 n \n" % o for o in offsets)
+    out += b"trailer\n<< /Size %d /Root 1 0 R " % (len(bodies) + 1) + trailer_extra + b">>\n"
+    out += b"startxref\n%d\n%%%%EOF\n" % xref
+    return bytes(out)
+
+
+PAGES = (
+    b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1 1] /Resources << >> >>",
+)
+
+
+def active(content: bytes) -> bool:
+    try:
+        files.validate(content)
+    except Invalid as e:
+        assert e.code in ("file_active_content", "file_malformed"), e.code
+        return True
+    return False
+
+
 def test_file_validation():
     with pytest.raises(Invalid, match="type"):
         files.validate(b"MZ\x90\x00 not a pdf")
-    with pytest.raises(Invalid, match="active"):
-        files.validate(b"%PDF-1.4\n1 0 obj << /OpenAction << /S /JavaScript /JS (app.alert(1)) >> >>")
     with pytest.raises(Invalid, match="exceeds"):
         files.validate(b"%PDF-" + b"0" * files.MAX_BYTES)
     assert (
@@ -182,6 +212,54 @@ def test_file_validation():
         and files.sanitize_name("in voice<>.pdf") == "in_voice_.pdf"
     )
     files.validate(pdf())  # our generated PDFs carry no active content
+    files.validate(raw_pdf(b"<< /Type /Catalog /Pages 2 0 R >>", *PAGES))
+
+
+@pytest.mark.parametrize(
+    "catalog",
+    [
+        b"<< /Type /Catalog /Pages 2 0 R /OpenAction << /S /JavaScript /JS (app.alert(1)) >> >>",
+        # name hex escapes decode to /OpenAction, /JavaScript, /JS
+        b"<< /Type /Catalog /Pages 2 0 R /Open#41ction << /S /J#61vaScript /J#53 (app.alert(1)) >> >>",
+        # NUL, comment and ')' delimiters the old byte regex did not accept
+        b"<< /Type /Catalog /Pages 2 0 R /OpenAction\x00<< /S /Launch%c\n/F (calc.exe)>> >>",
+        b"<< /Type /Catalog /Pages 2 0 R /Names << /JavaScript<< /Names [(a) << /S /JavaScript /JS(x)>>] >> >> >>",
+        b"<< /Type /Catalog /Pages 2 0 R /Names << /Embedded#46iles << /Names [] >> >> >>",
+        b"<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [] /X#46A [] >> >>",
+        b"<< /Type /Catalog /Pages 2 0 R /A#41 << /O << /S /SubmitForm >> >> >>",
+    ],
+)
+def test_file_validation_rejects_active_content_encodings(catalog: bytes):
+    with pytest.raises(Invalid, match="active") as e:
+        files.validate(raw_pdf(catalog, *PAGES))
+    assert e.value.code == "file_active_content"
+
+
+def test_file_validation_rejects_active_content_in_object_streams():
+    src = pikepdf.new()
+    src.add_blank_page()
+    src.Root.OpenAction = pikepdf.Dictionary(S=pikepdf.Name.JavaScript, JS=pikepdf.String("app.alert(1)"))
+    buf = io.BytesIO()
+    src.save(buf, object_stream_mode=pikepdf.ObjectStreamMode.generate, compress_streams=True)
+    content = buf.getvalue()
+    assert b"/OpenAction" not in content and b"/JavaScript" not in content  # hidden from a byte scan
+    with pytest.raises(Invalid, match="active"):
+        files.validate(content)
+
+
+def test_file_validation_fails_closed_on_damaged_or_encrypted_pdf():
+    # no xref: readers reconstruct it, so the parser repairs and we refuse rather than guess
+    assert active(b"%PDF-1.4\n1 0 obj << /OpenAction << /S /JavaScript /JS (app.alert(1)) >> >>")
+    with pytest.raises(Invalid) as e:
+        files.validate(b"%PDF-1.4\ngarbage")
+    assert e.value.code == "file_malformed"
+    src = pikepdf.new()
+    src.add_blank_page()
+    buf = io.BytesIO()
+    src.save(buf, encryption=pikepdf.Encryption(owner="o", user=""))
+    with pytest.raises(Invalid) as e:
+        files.validate(buf.getvalue())
+    assert e.value.code == "file_malformed"
 
 
 def test_money_parse():
