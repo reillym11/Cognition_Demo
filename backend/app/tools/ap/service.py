@@ -15,7 +15,7 @@ import httpx
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.foundation import approvals, audit, files, policy
+from app.foundation import approvals, audit, exports, files, policy
 from app.foundation.authz import Principal, system_principal
 from app.foundation.datacls import mask_record
 from app.foundation.db import utcnow
@@ -41,6 +41,11 @@ DATE_FIELDS = ("invoice_date", "due_date")
 CENT_FIELDS = {"subtotal": "subtotal_cents", "tax": "tax_cents", "total": "total_cents"}
 EDITABLE = (*TEXT_FIELDS, *DATE_FIELDS, *CENT_FIELDS.values())
 WORKABLE = ("needs_verification", "exception")
+INVOICE_NUMBER_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9 ./_-]{0,63}")
+
+
+def valid_number(n: str | None) -> bool:
+    return n is None or INVOICE_NUMBER_RE.fullmatch(n) is not None
 
 
 def norm_number(n: str | None) -> str | None:
@@ -156,6 +161,8 @@ def ingest(db: Session, p: Principal, name: str, content: bytes, source: str = "
     db.add(inv)
     db.flush()
     low = ex.low_confidence(float(policy.get(db, "ap.confidence_threshold")))
+    if not valid_number(inv.invoice_number):
+        low = sorted({*low, "invoice_number"})
     if prior:
         inv.status, inv.duplicate_of = "duplicate", prior
     elif low or ex.warnings:
@@ -187,6 +194,8 @@ def _match(db: Session, inv: Invoice) -> None:
         select(Vendor).where(func.lower(Vendor.name) == (inv.vendor_name or "").strip().lower())
     ).scalar_one_or_none()
     inv.vendor_id = vendor.id if vendor else None
+    if not valid_number(inv.invoice_number):
+        issues.append("invalid_invoice_number")
     if vendor is None:
         issues.append("unknown_vendor")
     elif inv.invoice_number_norm:
@@ -267,6 +276,8 @@ def verify(db: Session, p: Principal, iid: int, fields: dict[str, Any], reason: 
                 raise Invalid(f"{k} must be digits")
         else:
             v = str(v).strip() if v is not None else None
+            if k == "invoice_number" and not valid_number(v):
+                raise Invalid("invoice_number may only contain letters, digits, spaces and . / _ - (max 64)")
         setattr(inv, k, v)
     inv.invoice_number_norm = norm_number(inv.invoice_number)
     inv.verified_by = p.oid
@@ -611,18 +622,17 @@ def create_batch(db: Session, p: Principal, reason: str | None) -> PaymentBatch:
         ]
     )
     for i, v in ok:
-        w.writerow(
-            [
-                v.code,
-                v.name,
-                i.invoice_number,
-                i.total_cents,
-                i.currency,
-                v.bank_routing,
-                v.bank_account,
-                i.due_date,
-            ]
+        row = (
+            v.code,
+            v.name,
+            i.invoice_number,
+            i.total_cents,
+            i.currency,
+            v.bank_routing,
+            v.bank_account,
+            i.due_date,
         )
+        w.writerow([exports.cell(c) for c in row])
     content = buf.getvalue()
     sha = hashlib.sha256(content.encode()).hexdigest()
     total = sum(i.total_cents or 0 for i, _ in ok)
