@@ -5,7 +5,7 @@ from datetime import timedelta
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.foundation import approvals, audit, jobs, notify, policy
@@ -47,6 +47,14 @@ def get_refund(db: Session, refund_id: int, *, lock: bool = False) -> Refund:
     if r is None:
         raise NotFound("refund not found")
     return r
+
+
+def lock_requester(db: Session, oid: str) -> None:
+    """Serialise one requester's refund requests so the velocity count sees their other in-flight requests,
+    whichever charges those are against. Two-key form keeps it out of audit's single-key lock space."""
+    db.execute(
+        text("SELECT pg_advisory_xact_lock(hashtext('refunds.velocity'), hashtext(:oid))"), {"oid": oid}
+    )
 
 
 def reserved_cents(db: Session, txn_id: int) -> int:
@@ -112,6 +120,7 @@ def request_refund(
         raise Invalid(f"reason_code must be one of {sorted(REASON_CODES)}", code="reason_code")
     if isinstance(amount_cents, bool) or not isinstance(amount_cents, int) or amount_cents <= 0:
         raise Invalid("amount_cents must be a positive integer number of cents")
+    lock_requester(db, p.oid)
     t = get_txn(db, txn_id, lock=True)  # serialises concurrent refunds on the same charge
     amount = Money(amount_cents, t.currency)
     reserved = reserved_cents(db, t.id)
