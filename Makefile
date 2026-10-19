@@ -73,7 +73,10 @@ security: ## dependency + secret scanning
 	$(UV) pip-audit --skip-editable --progress-spinner off
 	cd web && pnpm audit --audit-level high || true
 
-check: lint typecheck test openapi-check ## everything CI runs (except e2e)
+dash-check: ## no en or em dashes in anything the site or sign-in page displays
+	@! grep -rnE '–|—|&[nm]dash;' web/src infra/oidc backend/app backend/mocks scripts --include=*.ts --include=*.tsx --include=*.html --include=*.py --include=*.css --include=*.json || { echo "en/em dash found in UI text (use --- for empty, ':' as a separator)"; exit 1; }
+
+check: dash-check lint typecheck test openapi-check ## everything CI runs (except e2e)
 
 e2e: ## browser tests (needs `make dev` running in another shell)
 	$(UV) pytest ../e2e -m e2e -p no:cov

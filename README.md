@@ -35,20 +35,29 @@ make dev          # API :8000, worker, mocks :8090, web :5173
 make e2e          # browser tests (10) against the running stack, in a second shell
 ```
 
-Open http://localhost:5173, click **Sign in with Microsoft (mock)** and pick a persona on the mock Entra login page:
+Open http://localhost:5173, pick a role in the **Sign in as** dropdown and click **Sign in**. The app still runs
+the real OIDC code + PKCE round trip against the mock Entra ID; the mock's page completes itself for the chosen role
+(standard `login_hint`), so there is no second page. Each role has access no other role has:
 
-| Persona | Roles | Try |
+| Role (dropdown) | Entra app role | Try |
 |---|---|---|
-| `ana.analyst`, `avery.analyst` | KYC.Analyst (US) | Claim + recommend a KYC case; the other analyst decides |
-| `sam.senior` | KYC.SeniorReviewer | High-risk second review |
-| `casey.contractor` | Support.Contractor (EU) | Sees only EU merchants' refund transactions (Contoso, Fabrikam), PII masked |
-| `alex.agent` / `fin.approver` | Support.Agent / Finance.Approver | Request a refund over $500 / approve it |
-| `pat.pm` / `erin.engineer` | Eng.PM / Eng.Engineer | Change a prod flag / approve it |
-| `hana.handler`, `hugo.handler`, `cora.compliance` | Complaints / Compliance | Work a regulatory complaint through compliance review |
-| `cleo.clerk`, `abe.approver`, `cam.controller` | AP clerk / approver / controller | Upload or poll an invoice, verify, approve, change bank details, export a batch |
-| `aud.auditor` | Audit.Auditor | Read-only everything + audit explorer |
-| `pia.platform` | Platform.Admin | Policies, jobs, access matrix |
-| `olly.overage` | (groups overage) | Shows the >200-groups token path with no roles → denied (Entra drops `groups` above 200 for JWT and sends an overage claim — [Microsoft Learn](https://learn.microsoft.com/en-us/entra/identity-platform/access-token-claims-reference), checked 2026-10) |
+| KYC Analyst | KYC.Analyst (US) | Claim and recommend a KYC case in the US region |
+| KYC Senior Reviewer | KYC.SeniorReviewer | Make the second decision (four eyes), high-risk cases, QA sample |
+| Compliance Admin | Compliance.Admin | KYC across regions, complaint compliance review, audit, policies |
+| Support Agent | Support.Agent | Request a refund over $500 for any region |
+| Support Contractor (EU) | Support.Contractor | Sees only EU merchants' refund transactions, PII masked |
+| Finance Approver | Finance.Approver | Approve the refund (must be a different person) |
+| Financial Controller | Finance.Controller + AP.Approver | Tier 2 invoice approval, final bank-change approval, refund reconciliation |
+| AP Clerk | AP.Clerk | Upload or poll an invoice, verify fields, request a bank-detail change |
+| AP Approver | AP.Approver | Tier 1 invoice approval, bank-change call-back |
+| Complaints Handler | Complaints.Handler | Work a complaint through the stages |
+| Engineer | Eng.Engineer | Create a flag, request a production change |
+| Platform Admin | Platform.Admin | Approve the production flag change, jobs, access matrix |
+| Auditor | Audit.Auditor | Read-only everywhere, audit explorer, evidence export |
+
+`infra/oidc/personas.json` also holds four test-only accounts (`hidden`), which are not offered at sign-in: a second
+KYC analyst, a second complaints handler, a product manager, and a user with a groups overage (more than 200 groups
+and no app roles, which is refused). After editing personas run `python scripts/gen_login_page.py`.
 
 Useful commands: `make check` (everything CI runs), `make test`, `make audit-verify`, `make audit-tamper-demo`
 (edits one audit row as superuser and shows verification fail), `make access-matrix`, `make new-tool name=<x>`.
@@ -73,6 +82,9 @@ Useful commands: `make check` (everything CI runs), `make test`, `make audit-ver
   and audit export, a real Entra app registration, secrets manager, TLS, monitoring/alerting, backups and DR tests.
   None of that is claimed here.
 - **Audit is tamper-evident, not tamper-proof**: a DB superuser can rewrite rows; the hash chain only detects it.
+- **Known gap (code scan, low):** the AP inbox poll takes one message at a time but keeps going until the inbox is
+  empty, inside one transaction, so a flood of inbox messages keeps the single worker busy and holds the AP audit lock.
+  Fix: cap messages per run and commit per message. Left open by choice for the prototype.
 - **Teams is mocked** (local webhook receiver). **Processor and AP inbox are mocks.**
 - **AP extraction** parses the text layer of synthetic PDFs. No OCR, no accuracy claim vs AI Builder on real invoices.
 - **Where Power Apps stays better**: citizen-developer speed for simple forms/lists

@@ -2363,6 +2363,7 @@ export interface operations {
         parameters: {
             query?: {
                 return_to?: string | null;
+                login_hint?: string | null;
             };
             header?: never;
             path?: never;

@@ -13,11 +13,11 @@ TOOL_LINKS = ["Review queue", "Refund requests", "Feature flags", "Complaints", 
 @pytest.mark.parametrize(
     ("persona", "link", "heading"),
     [
-        ("ana.analyst", "Review queue", "KYC review queue"),
-        ("alex.agent", "Refund requests", "Refund requests"),
-        ("erin.engineer", "Feature flags", "Feature flags"),
-        ("hana.handler", "Complaints", "Complaints"),
-        ("cleo.clerk", "AP invoices", "AP invoices"),
+        ("kyc.analyst", "Review queue", "KYC review queue"),
+        ("support.agent", "Refund requests", "Refund requests"),
+        ("flags.engineer", "Feature flags", "Feature flags"),
+        ("complaints.handler", "Complaints", "Complaints"),
+        ("ap.clerk", "AP invoices", "AP invoices"),
     ],
 )
 def test_each_persona_reaches_only_its_tool(as_persona, persona, link, heading):
@@ -31,25 +31,25 @@ def test_each_persona_reaches_only_its_tool(as_persona, persona, link, heading):
 
 
 def test_server_enforces_permissions_not_just_the_nav(as_persona):
-    page = as_persona("cleo.clerk")
+    page = as_persona("ap.clerk")
     assert page.request.get(f"{WEB}/api/kyc/cases").status == 403
     assert page.request.get(f"{WEB}/api/ap/invoices").status == 200
 
 
 def test_kyc_pii_is_masked_in_list(as_persona):
-    page = as_persona("ana.analyst")
+    page = as_persona("kyc.analyst")
     body = page.request.get(f"{WEB}/api/kyc/cases").text()
     assert not re.search(r"\b\d{3}-\d{2}-\d{4}\b", body), "unmasked SSN-shaped value in KYC list"
 
 
 def test_groups_overage_user_without_app_roles_is_refused_at_login(page):
-    start_login(page, "olly.overage")
+    start_login(page, "overage.user")
     expect(page.get_by_test_id("login-error")).to_contain_text("groups overage")
     assert page.request.get(f"{WEB}/api/me").status == 401
 
 
 def test_auditor_reads_audit_log_but_cannot_approve(as_persona):
-    page = as_persona("aud.auditor")
+    page = as_persona("auditor")
     page.goto(f"{WEB}/admin/audit")
     expect(page.get_by_role("heading", level=1, name="Audit log")).to_be_visible()
     expect(page.get_by_role("button", name=re.compile("^Approve"))).to_have_count(0)

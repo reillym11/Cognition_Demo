@@ -1,15 +1,16 @@
-import { Avatar, Body1, Caption1, Card, Menu, MenuItem, MenuList, MenuPopover, MenuTrigger, Subtitle1, Title3, makeStyles, mergeClasses, tokens } from "@fluentui/react-components";
+import { Avatar, Body1, Caption1, Card, Field, Menu, MenuItem, MenuList, MenuPopover, MenuTrigger, Select, Subtitle1, Title3, makeStyles, mergeClasses, tokens } from "@fluentui/react-components";
 import {
   ArrowUndo20Regular, ChatWarning20Regular, DocumentText20Regular, Flag20Regular, Home20Regular, MailInbox20Regular,
   PersonSearch20Regular, ShieldCheckmark20Regular, SignOut20Regular,
 } from "@fluentui/react-icons";
-import type { ReactElement } from "react";
+import { useState, type ReactElement } from "react";
 import { Link, NavLink, Navigate, Route, Routes, useLocation, useSearchParams } from "react-router-dom";
 import { http } from "../api/client";
 import { toolRoutes } from "../tools/registry";
 import { ErrorBox } from "../ui/kit";
 import { AccessPage, AuditPage, InboxPage, JobsPage, PolicyPage } from "./admin";
 import { useMe } from "./me";
+import { PERSONAS } from "./personas.gen";
 
 const LOGIN_ERRORS: Record<string, string> = {
   groups_overage:
@@ -47,7 +48,8 @@ const useStyles = makeStyles({
     backgroundColor: tokens.colorNeutralBackground1Selected, fontWeight: tokens.fontWeightSemibold,
     boxShadow: `inset 3px 0 0 ${tokens.colorBrandStroke1}`,
   },
-  login: { width: "420px", padding: "32px", margin: "96px auto 0" },
+  login: { width: "420px", padding: "32px", margin: "0 auto" },
+  loginMain: { paddingTop: "96px" },
   signIn: {
     display: "inline-flex", alignItems: "center", padding: "6px 16px", borderRadius: tokens.borderRadiusMedium,
     backgroundColor: tokens.colorBrandBackground, color: tokens.colorNeutralForegroundOnBrand, textDecorationLine: "none",
@@ -57,22 +59,38 @@ const useStyles = makeStyles({
   muted: { color: tokens.colorNeutralForeground3 },
 });
 
+const PERSONA_GROUPS = [...new Set(PERSONAS.map((p) => p.group))];
+
 export function LoginPage() {
   const s = useStyles();
   const [sp] = useSearchParams();
+  const [who, setWho] = useState(PERSONAS[0].username);
   const err = sp.get("error");
+  const chosen = PERSONAS.find((p) => p.username === who);
+  const href = `/api/auth/login?return_to=${encodeURIComponent(sp.get("next") ?? "/")}&login_hint=${encodeURIComponent(who)}`;
   return (
-    <main>
+    <main className={s.loginMain}>
       <Card className={mergeClasses(s.login, "space-y-4")}>
         <Title3 as="h1">Internal Tools</Title3>
-        <Body1>Sign in with your organization account (local mock of Microsoft Entra ID).</Body1>
+        <Body1>Choose a role to sign in. Demo environment, synthetic data only.</Body1>
         {err && (
           <div data-testid="login-error">
             <ErrorBox error={LOGIN_ERRORS[err] ?? `Sign-in failed (${err}).`} />
           </div>
         )}
+        <Field label="Sign in as" hint={chosen?.description}>
+          <Select value={who} onChange={(_, d) => setWho(d.value)}>
+            {PERSONA_GROUPS.map((g) => (
+              <optgroup key={g} label={g}>
+                {PERSONAS.filter((p) => p.group === g).map((p) => (
+                  <option key={p.username} value={p.username}>{p.name}</option>
+                ))}
+              </optgroup>
+            ))}
+          </Select>
+        </Field>
         <div>
-          <a className={s.signIn} href={`/api/auth/login?return_to=${encodeURIComponent(sp.get("next") ?? "/")}`}>Sign in with Microsoft (mock)</a>
+          <a className={s.signIn} href={href}>Sign in</a>
         </div>
       </Card>
     </main>

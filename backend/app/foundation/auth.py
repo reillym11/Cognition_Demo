@@ -5,6 +5,7 @@ IdP are validated (signature via JWKS, iss, aud, exp, nonce) and then discarded.
 """
 
 import hashlib
+import re
 import secrets
 import time
 from datetime import UTC, datetime, timedelta
@@ -50,6 +51,10 @@ def _hash(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
+# Standard OIDC login_hint (an account name); only passed through when it is a plain short identifier.
+LOGIN_HINT = re.compile(r"[A-Za-z0-9._@-]{1,128}")
+
+
 def _safe_return_to(value: str | None) -> str:
     if not value or not value.startswith("/") or value.startswith("//") or "\\" in value:
         return "/"
@@ -61,7 +66,7 @@ def _login_error(code: str) -> RedirectResponse:
 
 
 @router.get("/login", dependencies=[Depends(public("starts OIDC sign-in")), signin_rate_limit])
-def login(request: Request, return_to: str | None = None) -> RedirectResponse:
+def login(request: Request, return_to: str | None = None, login_hint: str | None = None) -> RedirectResponse:
     s = get_settings()
     meta = _oidc_metadata()["meta"]
     state, nonce, verifier, binding = (secrets.token_urlsafe(32) for _ in range(4))
@@ -96,6 +101,8 @@ def login(request: Request, return_to: str | None = None) -> RedirectResponse:
         "code_challenge": create_s256_code_challenge(verifier),
         "code_challenge_method": "S256",
     }
+    if login_hint and LOGIN_HINT.fullmatch(login_hint):
+        params["login_hint"] = login_hint
     resp = RedirectResponse(f"{meta['authorization_endpoint']}?{urlencode(params)}", status_code=303)
     resp.set_cookie(
         LOGIN_BINDING_COOKIE,

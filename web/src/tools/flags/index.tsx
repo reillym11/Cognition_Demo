@@ -15,7 +15,7 @@ type Change = { id: number; env: string; actor: string; approved_by: string | nu
 const ENVS = ["dev", "staging", "prod"];
 
 const envBadge = (e?: EnvCfg) =>
-  !e ? "—" : <Badge tone={!e.enabled ? "slate" : e.rollout_pct === 100 ? "green" : "blue"}>{e.enabled ? `${e.rollout_pct}%${e.rules.length ? " + rules" : ""}` : "off"}</Badge>;
+  !e ? "---" : <Badge tone={!e.enabled ? "slate" : e.rollout_pct === 100 ? "green" : "blue"}>{e.enabled ? `${e.rollout_pct}%${e.rules.length ? " + rules" : ""}` : "off"}</Badge>;
 
 function FlagList() {
   const me = useMe();
@@ -117,7 +117,7 @@ function FlagDetail() {
           <TableBody>
             {q.data.history.map((c) => (
               <TableRow key={c.id} className="border-t align-top">
-                <TableCell className="py-1 pr-2">{dt(c.at)}</TableCell><TableCell>{c.env}</TableCell><TableCell>{c.actor}</TableCell><TableCell>{c.approved_by ?? "—"}</TableCell><TableCell>{c.reason}</TableCell>
+                <TableCell className="py-1 pr-2">{dt(c.at)}</TableCell><TableCell>{c.env}</TableCell><TableCell>{c.actor}</TableCell><TableCell>{c.approved_by ?? "---"}</TableCell><TableCell>{c.reason}</TableCell>
                 <TableCell className="font-mono text-xs">
                   {Object.keys(c.after).filter((k) => JSON.stringify(c.before[k]) !== JSON.stringify(c.after[k])).map((k) => (
                     <div key={k}>{k}: {JSON.stringify(c.before[k])} → {JSON.stringify(c.after[k])}</div>

@@ -140,7 +140,7 @@ function Requests() {
           { key: "charge_id", label: "Charge" },
           { key: "amount_cents", label: "Amount", sortable: true, render: (r) => r.amount },
           { key: "status", label: "Status", render: (r) => <Badge tone={tone(r.status)}>{r.status}</Badge> },
-          { key: "velocity_flag", label: "Flags", render: (r) => (r.velocity_flag ? <Badge tone="amber">velocity</Badge> : r.needs_approval ? <Badge>2nd person</Badge> : "—") },
+          { key: "velocity_flag", label: "Flags", render: (r) => (r.velocity_flag ? <Badge tone="amber">velocity</Badge> : r.needs_approval ? <Badge>2nd person</Badge> : "---") },
           { key: "requested_by_name", label: "Requested by" },
           { key: "created_at", label: "Created", sortable: true, render: (r) => dt(r.created_at) },
         ]}
@@ -162,9 +162,9 @@ function RequestDetail() {
       <RecordTabs tabs={[{ key: "summary", label: "Summary", content: <>
       <Card>
         <KeyValues rows={[
-          ["Charge", r.charge_id], ["Merchant", r.merchant], ["Amount", r.amount], ["Reason", `${r.reason_code} — ${r.reason}`],
+          ["Charge", r.charge_id], ["Merchant", r.merchant], ["Amount", r.amount], ["Reason", `${r.reason_code}: ${r.reason}`],
           ["Requested by", r.requested_by_name], ["Second person needed", r.approval_why ?? "no (under threshold)"],
-          ["Processor ref", r.processor_ref ?? "—"], ["Attempts", r.attempts], ["Last error", r.last_error ?? "—"], ["Executed", dt(r.executed_at)],
+          ["Processor ref", r.processor_ref ?? "---"], ["Attempts", r.attempts], ["Last error", r.last_error ?? "---"], ["Executed", dt(r.executed_at)],
         ]} />
         {r.status === "unknown" && can(me.data, "refunds.reconcile") && (
           <div className="mt-3"><ReasonAction label="Reconcile now" onSubmit={async (reason) => { await http("POST", `/api/refunds/requests/${id}/reconcile`, { reason }); qc.invalidateQueries({ queryKey: key }); }} /></div>

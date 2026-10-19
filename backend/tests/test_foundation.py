@@ -56,7 +56,7 @@ def test_health_public_me_requires_login(app):
 
 
 def test_me_lists_permissions_and_nav(login):
-    r = login("aud.auditor").get("/api/me")
+    r = login("auditor").get("/api/me")
     assert r.status_code == 200
     body = r.json()
     assert "core.audit.read" in body["permissions"]
@@ -64,13 +64,13 @@ def test_me_lists_permissions_and_nav(login):
 
 
 def test_csrf_required_on_mutations(login):
-    c = login("aud.auditor")
+    c = login("auditor")
     c.headers.pop("X-CSRF-Token")
     assert c.post("/api/auth/logout").status_code == 403
 
 
 def test_logout_ends_session(login):
-    c = login("aud.auditor")
+    c = login("auditor")
     assert c.post("/api/auth/logout").status_code == 204
     assert c.get("/api/me").status_code == 401
 
@@ -79,7 +79,7 @@ def test_role_revocation_takes_effect_mid_session(login, directory, monkeypatch)
     from app.foundation.settings import get_settings
 
     monkeypatch.setattr(get_settings(), "roles_revalidate_seconds", 0)
-    c = login("aud.auditor")
+    c = login("auditor")
     assert c.get("/api/audit/events").status_code == 200
     oid = "00000000-0000-4000-8000-000000000011"
     directory.entries[oid] = dataclasses.replace(directory.entries[oid], roles=[])
@@ -92,7 +92,7 @@ def test_directory_cannot_add_roles_the_token_did_not_carry(login, directory, mo
     from app.foundation.settings import get_settings
 
     monkeypatch.setattr(get_settings(), "roles_revalidate_seconds", 0)
-    c = login("aud.auditor")
+    c = login("auditor")
     oid = "00000000-0000-4000-8000-000000000011"
     before = directory.entries[oid]
     directory.entries[oid] = dataclasses.replace(before, roles=[*before.roles, "Platform.Admin"])
@@ -142,7 +142,7 @@ def test_http_directory_sends_api_key(monkeypatch):
 def test_idle_timeout(login, monkeypatch):
     from app.foundation.settings import get_settings
 
-    c = login("aud.auditor")
+    c = login("auditor")
     monkeypatch.setattr(get_settings(), "session_idle_minutes", -1)
     assert c.get("/api/me").status_code == 401
 
@@ -160,7 +160,7 @@ def test_groups_overage_is_denied_with_clear_error():
 def test_audit_chain_verifies_and_detects_tampering():
     from testing import SUPER
 
-    p = principal("aud.auditor")
+    p = principal("auditor")
     with session_scope() as db:
         for i in range(5):
             audit.record(
@@ -179,7 +179,7 @@ def test_audit_chain_verifies_and_detects_tampering():
 
 
 def test_audit_chain_concurrent_writers():
-    p = principal("aud.auditor")
+    p = principal("auditor")
 
     def w(i: int) -> None:
         for j in range(5):
@@ -200,38 +200,38 @@ def test_audit_diff_keeps_changed_fields_only():
 
 
 def test_policy_change_requires_someone_else(login):
-    pia = principal("pia.platform")
+    pia = principal("platform.admin")
     key = "refunds.approval_threshold_cents"
     with session_scope() as db:
         rid = policy.request_change(db, pia, key, 12345, "tighten").id
     with session_scope() as db, pytest.raises(Forbidden):
         approvals.decide(db, pia, rid, "approve", "self")
     with session_scope() as db, pytest.raises(Forbidden, match=r"refunds\.policy\.approve"):
-        approvals.decide(db, principal("cora.compliance"), rid, "approve", "not my domain")
+        approvals.decide(db, principal("compliance.admin"), rid, "approve", "not my domain")
     with session_scope() as db:
-        approvals.decide(db, principal("cam.controller"), rid, "approve", "looks ok")
+        approvals.decide(db, principal("finance.controller"), rid, "approve", "looks ok")
     with session_scope() as db:
         assert policy.get(db, key) == 12345
         assert policy.current_version(db, key) == 2
 
 
 def test_kyc_policy_needs_kyc_policy_approver():
-    cam = principal("cam.controller")
+    cam = principal("finance.controller")
     key = "kyc.fastlane_criteria"
     tighter = {"max_vendor_score": 10, "max_watchlist_hits": 0, "require_docs_verified": True}
     with session_scope() as db:
         rid = policy.request_change(db, cam, key, tighter, "tighten").id
     with session_scope() as db, pytest.raises(Forbidden, match=r"kyc\.policy\.approve"):
-        approvals.decide(db, principal("pia.platform"), rid, "approve", "not my domain")
+        approvals.decide(db, principal("platform.admin"), rid, "approve", "not my domain")
     with session_scope() as db:
-        approvals.decide(db, principal("cora.compliance"), rid, "approve", "looks ok")
+        approvals.decide(db, principal("compliance.admin"), rid, "approve", "looks ok")
     with session_scope() as db:
         assert policy.get(db, key) == tighter
 
 
 def test_policy_value_validation():
     with session_scope() as db, pytest.raises(Invalid):
-        policy.request_change(db, principal("cora.compliance"), "ap.po_tolerance_bps", -5, "bad")
+        policy.request_change(db, principal("compliance.admin"), "ap.po_tolerance_bps", -5, "bad")
 
 
 @pytest.mark.parametrize(
@@ -271,7 +271,7 @@ def test_json_policy_schema_rejects_weakened_or_malformed(key, value):
     with pytest.raises(Invalid):
         policy.validate(key, value)
     with session_scope() as db, pytest.raises(Invalid):
-        policy.request_change(db, principal("pia.platform"), key, value, "weaken")
+        policy.request_change(db, principal("platform.admin"), key, value, "weaken")
 
 
 def test_malformed_stored_policy_falls_back_to_default(caplog):
@@ -289,7 +289,7 @@ def test_malformed_stored_policy_falls_back_to_default(caplog):
 def _raw_policy_request(db, key, value, stage_perm):
     return approvals.create_request(
         db,
-        principal("pia.platform"),
+        principal("platform.admin"),
         kind="core.policy_change",
         subject_type="policy",
         subject_id=key,
@@ -308,12 +308,12 @@ def test_apply_revalidates_value_and_approver():
             db, key, {"window_minutes": 0, "max_requests": 10}, "refunds.policy.approve"
         )
     with pytest.raises(Invalid), session_scope() as db:
-        approvals.decide(db, principal("cam.controller"), rid, "approve", "looks ok")
+        approvals.decide(db, principal("finance.controller"), rid, "approve", "looks ok")
     with session_scope() as db:
-        approvals.decide(db, principal("cam.controller"), rid, "reject", "invalid")
+        approvals.decide(db, principal("finance.controller"), rid, "reject", "invalid")
         rid = _raw_policy_request(db, key, {"window_minutes": 30, "max_requests": 5}, "kyc.policy.approve")
     with pytest.raises(Conflict, match=r"refunds\.policy\.approve"), session_scope() as db:
-        approvals.decide(db, principal("cora.compliance"), rid, "approve", "looks ok")
+        approvals.decide(db, principal("compliance.admin"), rid, "approve", "looks ok")
     with session_scope() as db:
         assert policy.current_version(db, key) == 1
 
@@ -375,8 +375,8 @@ def test_money_rejects_floats_and_other_currencies():
 
 
 def test_closed_request_rejects_decisions():
-    cora = principal("cora.compliance")
-    pia = principal("pia.platform")
+    cora = principal("compliance.admin")
+    pia = principal("platform.admin")
     with session_scope() as db:
         items = policy.list_all(db)
     if not items:
@@ -387,7 +387,7 @@ def test_closed_request_rejects_decisions():
             db, cora, key, policy.validate(key, 1 if items[0]["kind"] != "float" else 0.1), "x y z"
         ).id
     with session_scope() as db:
-        approvals.decide(db, principal("cam.controller"), rid, "reject", "not now")
+        approvals.decide(db, principal("finance.controller"), rid, "reject", "not now")
     with session_scope() as db, pytest.raises(Conflict):
         approvals.decide(db, pia, rid, "approve", "late")
 
@@ -421,7 +421,7 @@ def test_redact_text_bounds_input_length():
 
 
 def _evidence_events(n: int) -> None:
-    p = principal("aud.auditor")
+    p = principal("auditor")
     with session_scope() as db:
         for i in range(n):
             audit.record(db, p, "test.event", "policy", i, chain="t", reason=f"r{i}")
@@ -447,7 +447,7 @@ def test_evidence_pack_streams_events_and_is_audited(login):
 
     _evidence_events(3)
     today = datetime.now(UTC).date()
-    r = login("aud.auditor").get(
+    r = login("auditor").get(
         "/api/audit/evidence-pack", params={"start": today, "end": today, "reason": "quarterly audit"}
     )
     assert r.status_code == 200, r.text
@@ -470,14 +470,14 @@ def test_evidence_pack_streams_events_and_is_audited(login):
     ],
 )
 def test_evidence_pack_rejects_bad_ranges(login, start, end, code):
-    r = login("aud.auditor").get(
+    r = login("auditor").get(
         "/api/audit/evidence-pack", params={"start": start, "end": end, "reason": "quarterly audit"}
     )
     assert r.status_code == 422 and r.json()["code"] == code
 
 
 def test_evidence_pack_range_boundary_is_inclusive(login):
-    c = login("aud.auditor")
+    c = login("auditor")
     params = {"start": "2026-01-01", "end": "2027-01-01", "reason": "annual"}  # 366 days inclusive
     assert c.get("/api/audit/evidence-pack", params=params).status_code == 200
     _set_policy("core.evidence_pack_max_days", 365)
@@ -492,9 +492,9 @@ def test_evidence_pack_rejects_too_many_events(login):
     today = datetime.now(UTC).date()
     params = {"start": today, "end": today, "reason": "quarterly audit"}
     _set_policy("core.evidence_pack_max_events", 3)
-    assert login("aud.auditor").get("/api/audit/evidence-pack", params=params).status_code == 200
+    assert login("auditor").get("/api/audit/evidence-pack", params=params).status_code == 200
     _set_policy("core.evidence_pack_max_events", 2)
-    r = login("aud.auditor").get("/api/audit/evidence-pack", params=params)
+    r = login("auditor").get("/api/audit/evidence-pack", params=params)
     assert r.status_code == 422 and r.json()["code"] == "evidence_too_many_events"
 
 
@@ -511,10 +511,10 @@ def test_rate_limit_key_ignores_forged_session_cookies(login):
     assert client_key(req(None)) == "ip:10.0.0.7"
     assert client_key(req("forged-aaaaaaaaaaaaaaa")) == "ip:10.0.0.7"
     assert client_key(req("forged-bbbbbbbbbbbbbbb")) == "ip:10.0.0.7"
-    first = login("ana.analyst").cookies.get(auth.SESSION_COOKIE)
-    second = login("ana.analyst").cookies.get(auth.SESSION_COOKIE)
+    first = login("kyc.analyst").cookies.get(auth.SESSION_COOKIE)
+    second = login("kyc.analyst").cookies.get(auth.SESSION_COOKIE)
     assert first != second
-    oid = PERSONAS["ana.analyst"]["oid"]
+    oid = PERSONAS["kyc.analyst"]["oid"]
     assert client_key(req(first)) == client_key(req(second)) == f"user:{oid}"
 
 
@@ -539,7 +539,7 @@ def test_sensitive_rate_limit_is_per_user_across_sessions(login, monkeypatch):
 
     monkeypatch.setattr(get_settings(), "rate_limit_sensitive", "2/minute")
     body = {"field": "email", "reason": "check"}
-    a, b, other = login("ana.analyst"), login("ana.analyst"), login("avery.analyst")
+    a, b, other = login("kyc.analyst"), login("kyc.analyst"), login("kyc.analyst2")
     assert a.post("/api/kyc/cases/999999/reveal", json=body).status_code != 429
     assert b.post("/api/kyc/cases/999999/reveal", json=body).status_code != 429
     assert b.post("/api/kyc/cases/999999/reveal", json=body).json()["code"] == "rate_limited"
@@ -602,7 +602,7 @@ def test_sensitive_rate_limit_returns_429(login, monkeypatch):
     from app.foundation.settings import get_settings
 
     monkeypatch.setattr(get_settings(), "rate_limit_sensitive", "2/minute")
-    c = login("ana.analyst")
+    c = login("kyc.analyst")
     codes = [
         c.post("/api/kyc/cases/999999/reveal", json={"field": "email", "reason": "check"}).status_code
         for _ in range(3)

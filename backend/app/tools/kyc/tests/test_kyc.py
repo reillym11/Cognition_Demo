@@ -46,7 +46,7 @@ def make_case(**kw) -> int:
         return c.id
 
 
-def recommend_flow(case_id: int, preparer: str = "ana.analyst") -> int:
+def recommend_flow(case_id: int, preparer: str = "kyc.analyst") -> int:
     with session_scope() as db:
         service.claim(db, principal(preparer), case_id)
     with session_scope() as db:
@@ -59,9 +59,9 @@ def test_four_eyes_preparer_cannot_decide():
     cid = make_case()
     rid = recommend_flow(cid)
     with session_scope() as db, pytest.raises(Forbidden):
-        approvals.decide(db, principal("ana.analyst"), rid, "approve", "self")
+        approvals.decide(db, principal("kyc.analyst"), rid, "approve", "self")
     with session_scope() as db:
-        approvals.decide(db, principal("avery.analyst"), rid, "approve", "agree")
+        approvals.decide(db, principal("kyc.analyst2"), rid, "approve", "agree")
     with session_scope() as db:
         c = db.get(KycCase, cid)
         assert c.status == "approved" and c.decided_by.endswith("002")
@@ -73,40 +73,40 @@ def test_reassignment_loophole_closed():
     """Avery touches the case, releases it, Ana prepares it: Avery still can't decide."""
     cid = make_case()
     with session_scope() as db:
-        service.claim(db, principal("avery.analyst"), cid)
+        service.claim(db, principal("kyc.analyst2"), cid)
     with session_scope() as db:
-        service.release(db, principal("avery.analyst"), cid, "wrong queue")
+        service.release(db, principal("kyc.analyst2"), cid, "wrong queue")
     rid = recommend_flow(cid)
     with session_scope() as db, pytest.raises(Forbidden, match="excluded"):
-        approvals.decide(db, principal("avery.analyst"), rid, "approve", "looks ok")
+        approvals.decide(db, principal("kyc.analyst2"), rid, "approve", "looks ok")
     with session_scope() as db:
-        approvals.decide(db, principal("sam.senior"), rid, "approve", "looks ok")
+        approvals.decide(db, principal("kyc.senior"), rid, "approve", "looks ok")
 
 
 def test_high_risk_needs_senior():
     cid = make_case(risk_level="high")
     with session_scope() as db, pytest.raises(Forbidden):
-        service.claim(db, principal("ana.analyst"), cid)
-    rid = recommend_flow(cid, preparer="sam.senior")
+        service.claim(db, principal("kyc.analyst"), cid)
+    rid = recommend_flow(cid, preparer="kyc.senior")
     with session_scope() as db, pytest.raises(Forbidden, match=r"kyc\.decide_high"):
-        approvals.decide(db, principal("avery.analyst"), rid, "approve", "looks ok")
+        approvals.decide(db, principal("kyc.analyst2"), rid, "approve", "looks ok")
 
 
 def test_escalation_routes_to_seniors():
     cid = make_case()
     with session_scope() as db:
-        service.claim(db, principal("ana.analyst"), cid)
+        service.claim(db, principal("kyc.analyst"), cid)
     with session_scope() as db:
-        service.escalate(db, principal("ana.analyst"), cid, "odd documents")
+        service.escalate(db, principal("kyc.analyst"), cid, "odd documents")
     with session_scope() as db, pytest.raises(Forbidden):
-        service.claim(db, principal("avery.analyst"), cid)
+        service.claim(db, principal("kyc.analyst2"), cid)
 
 
 def test_returned_recommendation_goes_back_to_preparer():
     cid = make_case()
     rid = recommend_flow(cid)
     with session_scope() as db:
-        approvals.decide(db, principal("avery.analyst"), rid, "reject", "need proof of address")
+        approvals.decide(db, principal("kyc.analyst2"), rid, "reject", "need proof of address")
     with session_scope() as db:
         c = db.get(KycCase, cid)
         assert c.status == "in_review" and c.assigned_to.endswith("001") and c.decision is None
@@ -115,11 +115,11 @@ def test_returned_recommendation_goes_back_to_preparer():
 def test_reason_codes_and_reasons_required():
     cid = make_case()
     with session_scope() as db:
-        service.claim(db, principal("ana.analyst"), cid)
+        service.claim(db, principal("kyc.analyst"), cid)
     with session_scope() as db, pytest.raises(Invalid):
-        service.recommend(db, principal("ana.analyst"), cid, "approve", "WATCHLIST_MATCH", "x y")
+        service.recommend(db, principal("kyc.analyst"), cid, "approve", "WATCHLIST_MATCH", "x y")
     with session_scope() as db, pytest.raises(Invalid):
-        service.recommend(db, principal("ana.analyst"), cid, "approve", "DOCS_VERIFIED", "  ")
+        service.recommend(db, principal("kyc.analyst"), cid, "approve", "DOCS_VERIFIED", "  ")
 
 
 def test_claim_race_one_winner():
@@ -134,7 +134,7 @@ def test_claim_race_one_winner():
         except Conflict:
             results.append("conflict")
 
-    ts = [threading.Thread(target=go, args=(u,)) for u in ["ana.analyst", "avery.analyst", "sam.senior"] * 3]
+    ts = [threading.Thread(target=go, args=(u,)) for u in ["kyc.analyst", "kyc.analyst2", "kyc.senior"] * 3]
     [t.start() for t in ts]
     [t.join() for t in ts]
     # The same user re-claiming their own case is idempotent, so winners == attempts by the first claimant.
@@ -182,7 +182,7 @@ def test_qa_failure_reopens_for_senior():
     with session_scope() as db:
         service.run_fastlane(db, {})
     with session_scope() as db:
-        service.qa_review(db, principal("sam.senior"), cid, "failed", "address mismatch")
+        service.qa_review(db, principal("kyc.senior"), cid, "failed", "address mismatch")
     with session_scope() as db:
         c = db.get(KycCase, cid)
         assert c.status == "new" and c.requires_senior
@@ -192,7 +192,7 @@ def test_decision_records_are_append_only():
     cid = make_case()
     rid = recommend_flow(cid)
     with session_scope() as db:
-        approvals.decide(db, principal("avery.analyst"), rid, "approve", "looks ok")
+        approvals.decide(db, principal("kyc.analyst2"), rid, "approve", "looks ok")
     with session_scope() as db, pytest.raises(Exception, match=r"append-only|permission denied"):
         db.execute(text("UPDATE kyc_decisions SET decision='reject'"))
 
@@ -200,14 +200,14 @@ def test_decision_records_are_append_only():
 def test_region_row_scope_and_masking(login):
     us = make_case(region="US")
     eu = make_case(region="EU")
-    c = login("ana.analyst")
+    c = login("kyc.analyst")
     body = c.get("/api/kyc/cases?status=open").json()
     ids = {i["id"] for i in body["items"]}
     assert us in ids and eu not in ids
     assert c.get(f"/api/kyc/cases/{eu}").status_code == 404
     item = next(i for i in body["items"] if i["id"] == us)
     assert item["ssn"] == "***-**-3456" and item["email"].startswith("j***@")
-    assert login("cora.compliance").get(f"/api/kyc/cases/{eu}").status_code == 200
+    assert login("compliance.admin").get(f"/api/kyc/cases/{eu}").status_code == 200
 
 
 def test_directory_region_change_ends_live_session(login, directory, monkeypatch):
@@ -216,10 +216,10 @@ def test_directory_region_change_ends_live_session(login, directory, monkeypatch
     monkeypatch.setattr(get_settings(), "roles_revalidate_seconds", 0)
     us = make_case(region="US")
     eu = make_case(region="EU")
-    oid = PERSONAS["ana.analyst"]["oid"]
+    oid = PERSONAS["kyc.analyst"]["oid"]
     for new_region in ("EU", None):
         directory.entries[oid] = dataclasses.replace(directory.entries[oid], region="US")
-        c = login("ana.analyst")
+        c = login("kyc.analyst")
         assert c.get(f"/api/kyc/cases/{us}").status_code == 200
         directory.entries[oid] = dataclasses.replace(directory.entries[oid], region=new_region)
         assert c.get(f"/api/kyc/cases/{eu}").status_code == 401
@@ -241,7 +241,7 @@ def test_out_of_region_approver_cannot_see_or_decide(login):
     from dataclasses import replace
 
     eu = make_case(region="EU")
-    eu_preparer = replace(principal("avery.analyst"), region="EU")
+    eu_preparer = replace(principal("kyc.analyst2"), region="EU")
     with session_scope() as db:
         service.claim(db, eu_preparer, eu)
     with session_scope() as db:
@@ -249,17 +249,17 @@ def test_out_of_region_approver_cannot_see_or_decide(login):
     with session_scope() as db:
         rid = approvals.open_for_subject(db, service.RES, eu).id
 
-    us = login("ana.analyst")
+    us = login("kyc.analyst")
     assert rid not in {r["id"] for r in us.get("/api/approvals/inbox").json()}
     assert us.get(f"/api/approvals/{rid}").status_code == 404
     r = us.post(f"/api/approvals/{rid}/decide", json={"decision": "approve", "reason": "looks fine"})
     assert r.status_code == 403
     with session_scope() as db, pytest.raises(Forbidden):
-        approvals.decide(db, principal("ana.analyst"), rid, "approve", "looks fine")
+        approvals.decide(db, principal("kyc.analyst"), rid, "approve", "looks fine")
     with session_scope() as db:
         assert db.get(KycCase, eu).status == "pending_decision"
 
-    eu_decider = replace(principal("ana.analyst"), region="EU")
+    eu_decider = replace(principal("kyc.analyst"), region="EU")
     with session_scope() as db:
         approvals.decide(db, eu_decider, rid, "approve", "agree")
     with session_scope() as db:
@@ -268,17 +268,17 @@ def test_out_of_region_approver_cannot_see_or_decide(login):
 
 def test_reveal_is_audited_and_permissioned(login):
     cid = make_case()
-    r = login("ana.analyst").post(
+    r = login("kyc.analyst").post(
         f"/api/kyc/cases/{cid}/reveal", json={"field": "ssn", "reason": "verify identity"}
     )
     assert r.json()["value"] == "900-12-3456"
     assert (
-        login("aud.auditor")
+        login("auditor")
         .post(f"/api/kyc/cases/{cid}/reveal", json={"field": "ssn", "reason": "x y z"})
         .status_code
         == 403
     )
-    assert login("ana.analyst").post(f"/api/kyc/cases/{cid}/reveal", json={"field": "ssn"}).status_code == 422
+    assert login("kyc.analyst").post(f"/api/kyc/cases/{cid}/reveal", json={"field": "ssn"}).status_code == 422
     with session_scope() as db:
         n = db.execute(text("SELECT count(*) FROM audit_events WHERE action='kyc.pii_revealed'")).scalar_one()
     assert n == 1
@@ -286,7 +286,7 @@ def test_reveal_is_audited_and_permissioned(login):
 
 def test_export_masks_and_audits(login):
     make_case()
-    c = login("cora.compliance")
+    c = login("compliance.admin")
     assert c.get("/api/kyc/export").status_code == 422
     r = c.get("/api/kyc/export?reason=quarterly+review")
     assert r.status_code == 200 and "900-12-3456" not in r.text and "J*** Q*** T***" in r.text
@@ -299,7 +299,7 @@ def test_seed_25k_and_list_fast(login):
     with session_scope() as db:
         seed(db, 1.0)
     assert time.time() - t < 30
-    c = login("cora.compliance")
+    c = login("compliance.admin")
     t = time.time()
     r = c.get("/api/kyc/cases?status=open&sort=sla_due_at&risk=high")
     assert r.status_code == 200 and time.time() - t < 1.0
@@ -309,9 +309,9 @@ def test_seed_25k_and_list_fast(login):
 @settings(max_examples=25, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
 @given(
     preparers=st.lists(
-        st.sampled_from(["ana.analyst", "avery.analyst", "sam.senior"]), min_size=1, max_size=3
+        st.sampled_from(["kyc.analyst", "kyc.analyst2", "kyc.senior"]), min_size=1, max_size=3
     ),
-    decider=st.sampled_from(["ana.analyst", "avery.analyst", "sam.senior", "cora.compliance"]),
+    decider=st.sampled_from(["kyc.analyst", "kyc.analyst2", "kyc.senior", "compliance.admin"]),
 )
 def test_property_nobody_who_touched_can_decide(preparers, decider):
     cid = make_case()
@@ -327,4 +327,4 @@ def test_property_nobody_who_touched_can_decide(preparers, decider):
         decided = True
     except Forbidden:
         decided = False
-    assert decided == (decider not in preparers and decider != "cora.compliance")
+    assert decided == (decider not in preparers and decider != "compliance.admin")

@@ -1,7 +1,7 @@
 # Self-review: refunds contractor region row scope
 
 Fixes code scan finding sfind-e1471211b7d6447682d37b1443774fba: the refunds tool had no region on `Transaction` and no
-row scope, so `Support.Contractor` (`casey.contractor`, region EU, "EU merchants only") could list, open, audit and
+row scope, so `Support.Contractor` (`support.contractor`, region EU, "EU merchants only") could list, open, audit and
 request refunds on every merchant's transactions.
 
 ## Files changed

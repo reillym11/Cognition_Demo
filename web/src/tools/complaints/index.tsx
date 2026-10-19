@@ -46,8 +46,8 @@ function Queue() {
           { key: "received_at", label: "Received", sortable: true, render: (r) => dt(r.received_at) },
           { key: "summary", label: "Summary", render: (r) => r.summary ?? <span className="text-slate-400">not triaged</span> },
           { key: "stage", label: "Stage", render: (r) => <>{r.stage_label} {(r.regulatory || r.unfair_treatment) && <Badge tone="amber">reg</Badge>}</> },
-          { key: "stage_due_at", label: "Stage due", sortable: true, render: (r) => (r.stage_due_at ? <Badge tone={r.overdue ? "red" : "slate"}>{dt(r.stage_due_at)}</Badge> : "—") },
-          { key: "assigned_name", label: "Assigned", render: (r) => r.assigned_name ?? "—" },
+          { key: "stage_due_at", label: "Stage due", sortable: true, render: (r) => (r.stage_due_at ? <Badge tone={r.overdue ? "red" : "slate"}>{dt(r.stage_due_at)}</Badge> : "---") },
+          { key: "assigned_name", label: "Assigned", render: (r) => r.assigned_name ?? "---" },
           { key: "age_days", label: "Age (d)" },
         ]}
       />
@@ -144,10 +144,10 @@ function Detail() {
         <Card title="Complaint">
           <KeyValues rows={[
             ["Customer", reveal("customer_name")], ["Email", reveal("customer_email")], ["Channel", c.channel], ["Received", dt(c.received_at)],
-            ["Stage due", c.stage_due_at ? <Badge tone={c.overdue ? "red" : "slate"}>{dt(c.stage_due_at)}</Badge> : "—"],
-            ["Assigned", c.assigned_name ?? "—"], ["Product", c.product ?? "—"], ["Category", c.category ?? "—"],
+            ["Stage due", c.stage_due_at ? <Badge tone={c.overdue ? "red" : "slate"}>{dt(c.stage_due_at)}</Badge> : "---"],
+            ["Assigned", c.assigned_name ?? "---"], ["Product", c.product ?? "---"], ["Category", c.category ?? "---"],
             ["Tags", <>{c.regulatory && <Badge tone="amber">regulatory</Badge>} {c.unfair_treatment && <Badge tone="amber">unfair treatment</Badge>}</>],
-            ["Root cause", c.root_cause ?? "—"], ["Resolution", c.resolution ?? "—"], ["Compliance notes", c.compliance_notes ?? "—"],
+            ["Root cause", c.root_cause ?? "---"], ["Resolution", c.resolution ?? "---"], ["Compliance notes", c.compliance_notes ?? "---"],
             ["Description", c.description],
           ]} />
         </Card>

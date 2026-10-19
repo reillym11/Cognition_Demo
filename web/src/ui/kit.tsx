@@ -13,7 +13,7 @@ import { http } from "../api/client";
 export { Checkbox, Input, FSelect as Choice, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Textarea };
 
 export function cents(c: number | null | undefined, currency = "USD"): string {
-  if (c === null || c === undefined) return "—";
+  if (c === null || c === undefined) return "---";
   const sign = c < 0 ? "-" : "";
   const a = Math.abs(c);
   const whole = Math.floor(a / 100).toLocaleString("en-US");
@@ -21,7 +21,7 @@ export function cents(c: number | null | undefined, currency = "USD"): string {
 }
 
 export function dt(iso: string | null | undefined): string {
-  return iso ? new Date(iso).toLocaleString() : "—";
+  return iso ? new Date(iso).toLocaleString() : "---";
 }
 
 const useStyles = makeStyles({
@@ -195,7 +195,7 @@ export function DataTable<T extends { id: number | string }>({
           {q.data?.items.map((row) => (
             <TableRow key={row.id} data-testid={rowTestId} className={onRowClick ? s.rowClick : undefined} onClick={() => onRowClick?.(row)}>
               {columns.map((c) => (
-                <TableCell key={c.key}>{c.render ? c.render(row) : String((row as Record<string, unknown>)[c.key] ?? "—")}</TableCell>
+                <TableCell key={c.key}>{c.render ? c.render(row) : String((row as Record<string, unknown>)[c.key] ?? "---")}</TableCell>
               ))}
             </TableRow>
           ))}
@@ -340,7 +340,7 @@ export function AuditTimeline({ url }: { url: string }) {
           </div>
           <div className={s.muted}>
             {e.actor_name}
-            {e.reason ? ` — “${e.reason}”` : ""}
+            {e.reason ? `: “${e.reason}”` : ""}
           </div>
           {e.after != null && <code className={mergeClasses("block truncate", s.code)}>{JSON.stringify(e.after)}</code>}
         </li>
@@ -359,7 +359,7 @@ export function MaskedField({ value, revealUrl, canReveal, field }: { value: str
   });
   return (
     <span className="inline-flex flex-wrap items-center gap-2" data-testid={`masked-${field}`}>
-      <code className={s.code}>{shown ?? value ?? "—"}</code>
+      <code className={s.code}>{shown ?? value ?? "---"}</code>
       {canReveal && shown === null && value && (
         <ReasonAction label="Reveal" variant="subtle" icon={<Eye20Regular />} onSubmit={(r) => m.mutateAsync(r)} testId={`reveal-${field}`} />
       )}

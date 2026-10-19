@@ -16,7 +16,7 @@ ON = {"enabled": True, "rollout_pct": 100, "rules": [], "default_value": False}
 
 def make_flag(key: str = "checkout.new-flow") -> str:
     with session_scope() as db:
-        service.create_flag(db, principal("erin.engineer"), key, "test", "Erin", "new feature")
+        service.create_flag(db, principal("flags.engineer"), key, "test", "Erin", "new feature")
     return key
 
 
@@ -35,7 +35,7 @@ def test_new_flag_disabled_everywhere_and_missing_uses_explicit_default():
 def test_dev_change_applies_and_is_recorded_with_diff():
     k = make_flag()
     with session_scope() as db:
-        assert service.change(db, principal("erin.engineer"), k, "dev", ON, "try it")["status"] == "applied"
+        assert service.change(db, principal("flags.engineer"), k, "dev", ON, "try it")["status"] == "applied"
     assert ev(k, user_id="u1") == {"value": True, "reason": "FULL_ROLLOUT", "version": 2}
     with session_scope() as db:
         c = db.execute(select(FlagChange)).scalar_one()
@@ -45,25 +45,25 @@ def test_dev_change_applies_and_is_recorded_with_diff():
 def test_prod_change_needs_second_person():
     k = make_flag()
     with session_scope() as db:
-        res = service.change(db, principal("erin.engineer"), k, "prod", ON, "launch")
+        res = service.change(db, principal("flags.engineer"), k, "prod", ON, "launch")
     assert res["status"] == "pending_approval"
     assert ev(k, "prod", user_id="u1")["reason"] == "DISABLED"
     with session_scope() as db, pytest.raises(Conflict):
-        service.change(db, principal("pat.pm"), k, "prod", {**ON, "rollout_pct": 50}, "competing")
+        service.change(db, principal("flags.pm"), k, "prod", {**ON, "rollout_pct": 50}, "competing")
     with session_scope() as db, pytest.raises(Forbidden):
         approvals.decide(
-            db, principal("erin.engineer"), res["approval_request_id"], "approve", "self approve"
+            db, principal("flags.engineer"), res["approval_request_id"], "approve", "self approve"
         )
     with session_scope() as db, pytest.raises(Forbidden):
-        approvals.decide(db, principal("pat.pm"), res["approval_request_id"], "approve", "no permission")
+        approvals.decide(db, principal("flags.pm"), res["approval_request_id"], "approve", "no permission")
     with session_scope() as db:
         approvals.decide(
-            db, principal("pia.platform"), res["approval_request_id"], "approve", "reviewed rollout plan"
+            db, principal("platform.admin"), res["approval_request_id"], "approve", "reviewed rollout plan"
         )
     assert ev(k, "prod", user_id="u1")["value"] is True
     with session_scope() as db:
         c = db.execute(select(FlagChange).where(FlagChange.env == "prod")).scalar_one()
-        assert c.actor_name == "Erin Engineer" and c.approved_by == "Pia Platform"
+        assert c.actor_name == "Engineer" and c.approved_by == "Platform Admin"
 
 
 def test_targeting_rules():
@@ -71,7 +71,7 @@ def test_targeting_rules():
     with session_scope() as db:
         service.change(
             db,
-            principal("erin.engineer"),
+            principal("flags.engineer"),
             k,
             "dev",
             {**ON, "rules": [{"attribute": "region", "op": "in", "values": ["US"]}]},
@@ -91,9 +91,9 @@ def test_validation():
         {**ON, "rules": [{"attribute": "region", "op": "regex", "values": ["x"]}]},
     ):
         with session_scope() as db, pytest.raises(Invalid):
-            service.change(db, principal("erin.engineer"), k, "dev", bad, "bad config")
+            service.change(db, principal("flags.engineer"), k, "dev", bad, "bad config")
     with session_scope() as db, pytest.raises(Invalid):
-        service.create_flag(db, principal("erin.engineer"), "Bad Key!", "", "", "reason here")
+        service.create_flag(db, principal("flags.engineer"), "Bad Key!", "", "", "reason here")
 
 
 def test_stale_detection_and_report():
@@ -128,12 +128,10 @@ def test_property_rollout_monotonic(uid, a, b):
 
 def test_api_permissions(login):
     k = make_flag()
-    assert (
-        login("aud.auditor").put(f"/api/flags/{k}/envs/dev", json={**ON, "reason": "nope"}).status_code == 403
-    )
-    r = login("pat.pm").put(f"/api/flags/{k}/envs/prod", json={**ON, "reason": "launch it"})
+    assert login("auditor").put(f"/api/flags/{k}/envs/dev", json={**ON, "reason": "nope"}).status_code == 403
+    r = login("flags.pm").put(f"/api/flags/{k}/envs/prod", json={**ON, "reason": "launch it"})
     assert r.status_code == 200 and r.json()["status"] == "pending_approval"
-    r = login("erin.engineer").get(
+    r = login("flags.engineer").get(
         "/api/flags/evaluate", params={"key": k, "env": "dev", "default": True, "user_id": "u"}
     )
     assert r.json()["reason"] == "DISABLED"

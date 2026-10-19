@@ -147,7 +147,7 @@ def recommend(
         kind="kyc.decision",
         subject_type=RES,
         subject_id=c.id,
-        title=f"KYC {c.ref}: {decision} ({code}){' — senior review' if senior else ''}",
+        title=f"KYC {c.ref}: {decision} ({code}){': senior review' if senior else ''}",
         reason=reason,
         chain=CHAIN,
         requirement=approvals.Requirement(

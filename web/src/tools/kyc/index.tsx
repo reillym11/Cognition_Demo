@@ -106,7 +106,7 @@ function CaseDetail() {
             ["Risk level", <Badge tone={riskTone(c.risk_level)}>{c.risk_level}</Badge>],
             ["Vendor score", c.vendor_score], ["Watchlist hits", c.watchlist_hits], ["Documents verified", c.docs_verified ? "yes" : "no"],
             ["Senior review", c.requires_senior ? "required" : "no"], ["SLA due", <span className={c.sla_breached ? "text-red-700" : ""}>{dt(c.sla_due_at)}</span>],
-            ["Assigned", c.assigned_name ?? "—"], ["Decision", c.decision_code ? `${c.decision} (${c.decision_code}) by ${c.decided_by}` : "—"],
+            ["Assigned", c.assigned_name ?? "---"], ["Decision", c.decision_code ? `${c.decision} (${c.decision_code}) by ${c.decided_by}` : "---"],
           ]} />
         </Card>
       </div>

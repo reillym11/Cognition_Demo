@@ -1,22 +1,197 @@
 {
-  "_comment": "Synthetic personas. Entra app roles go in the `roles` claim. `region` models a directory extension attribute used for row scopes.",
+  "_comment": "Synthetic personas. Entra app roles go in the `roles` claim. `region` models a directory extension attribute used for row scopes. Personas with `hidden` are kept for automated tests and are not offered at sign-in.",
   "personas": [
-    {"username": "ana.analyst", "name": "Ana Analyst", "oid": "00000000-0000-4000-8000-000000000001", "roles": ["KYC.Analyst"], "region": "US", "persona": "Compliance analyst"},
-    {"username": "avery.analyst", "name": "Avery Analyst", "oid": "00000000-0000-4000-8000-000000000002", "roles": ["KYC.Analyst"], "region": "US", "persona": "Compliance analyst (second reviewer)"},
-    {"username": "sam.senior", "name": "Sam Senior", "oid": "00000000-0000-4000-8000-000000000003", "roles": ["KYC.Analyst", "KYC.SeniorReviewer"], "region": "US", "persona": "Senior compliance reviewer"},
-    {"username": "cora.compliance", "name": "Cora Compliance", "oid": "00000000-0000-4000-8000-000000000004", "roles": ["Compliance.Admin"], "region": "US", "persona": "Compliance admin"},
-    {"username": "alex.agent", "name": "Alex Agent", "oid": "00000000-0000-4000-8000-000000000005", "roles": ["Support.Agent"], "region": "US", "persona": "Support agent"},
-    {"username": "casey.contractor", "name": "Casey Contractor", "oid": "00000000-0000-4000-8000-000000000006", "roles": ["Support.Contractor"], "region": "EU", "persona": "Contractor support agent (EU merchants only)"},
-    {"username": "fin.approver", "name": "Fin Approver", "oid": "00000000-0000-4000-8000-000000000007", "roles": ["Finance.Approver"], "region": "US", "persona": "Finance approver"},
-    {"username": "erin.engineer", "name": "Erin Engineer", "oid": "00000000-0000-4000-8000-000000000008", "roles": ["Eng.Engineer"], "region": "US", "persona": "Engineer"},
-    {"username": "pat.pm", "name": "Pat PM", "oid": "00000000-0000-4000-8000-000000000009", "roles": ["Eng.PM"], "region": "US", "persona": "Product manager"},
-    {"username": "pia.platform", "name": "Pia Platform", "oid": "00000000-0000-4000-8000-000000000010", "roles": ["Platform.Admin"], "region": "US", "persona": "Platform admin"},
-    {"username": "aud.auditor", "name": "Aud Auditor", "oid": "00000000-0000-4000-8000-000000000011", "roles": ["Audit.Auditor"], "region": "US", "persona": "Internal auditor (read-only)"},
-    {"username": "hana.handler", "name": "Hana Handler", "oid": "00000000-0000-4000-8000-000000000012", "roles": ["Complaints.Handler"], "region": "US", "persona": "Complaints handler"},
-    {"username": "hugo.handler", "name": "Hugo Handler", "oid": "00000000-0000-4000-8000-000000000013", "roles": ["Complaints.Handler"], "region": "US", "persona": "Complaints handler (second)"},
-    {"username": "cleo.clerk", "name": "Cleo Clerk", "oid": "00000000-0000-4000-8000-000000000014", "roles": ["AP.Clerk"], "region": "US", "persona": "AP clerk"},
-    {"username": "abe.approver", "name": "Abe Approver", "oid": "00000000-0000-4000-8000-000000000015", "roles": ["AP.Approver"], "region": "US", "persona": "AP approver (tier 1)"},
-    {"username": "cam.controller", "name": "Cam Controller", "oid": "00000000-0000-4000-8000-000000000016", "roles": ["AP.Approver", "Finance.Controller"], "region": "US", "persona": "Financial controller (tier 2)"},
-    {"username": "olly.overage", "name": "Olly Overage", "oid": "00000000-0000-4000-8000-000000000017", "roles": null, "region": "US", "persona": "User in >200 groups (groups overage, no app roles)", "overage": true}
+    {
+      "username": "kyc.analyst",
+      "name": "KYC Analyst",
+      "oid": "00000000-0000-4000-8000-000000000001",
+      "roles": [
+        "KYC.Analyst"
+      ],
+      "region": "US",
+      "group": "KYC",
+      "persona": "Works KYC cases in their region"
+    },
+    {
+      "username": "kyc.analyst2",
+      "name": "KYC Analyst 2",
+      "oid": "00000000-0000-4000-8000-000000000002",
+      "roles": [
+        "KYC.Analyst"
+      ],
+      "region": "US",
+      "group": "KYC",
+      "persona": "Second analyst (automated tests only)",
+      "hidden": true
+    },
+    {
+      "username": "kyc.senior",
+      "name": "KYC Senior Reviewer",
+      "oid": "00000000-0000-4000-8000-000000000003",
+      "roles": [
+        "KYC.Analyst",
+        "KYC.SeniorReviewer"
+      ],
+      "region": "US",
+      "group": "KYC",
+      "persona": "Second decision, high-risk cases, QA sample"
+    },
+    {
+      "username": "compliance.admin",
+      "name": "Compliance Admin",
+      "oid": "00000000-0000-4000-8000-000000000004",
+      "roles": [
+        "Compliance.Admin"
+      ],
+      "region": "US",
+      "group": "Admin",
+      "persona": "KYC across regions, complaint compliance review, audit, policies"
+    },
+    {
+      "username": "support.agent",
+      "name": "Support Agent",
+      "oid": "00000000-0000-4000-8000-000000000005",
+      "roles": [
+        "Support.Agent"
+      ],
+      "region": "US",
+      "group": "Refunds",
+      "persona": "Requests refunds for any region"
+    },
+    {
+      "username": "support.contractor",
+      "name": "Support Contractor (EU)",
+      "oid": "00000000-0000-4000-8000-000000000006",
+      "roles": [
+        "Support.Contractor"
+      ],
+      "region": "EU",
+      "group": "Refunds",
+      "persona": "Refunds for EU merchants only"
+    },
+    {
+      "username": "finance.approver",
+      "name": "Finance Approver",
+      "oid": "00000000-0000-4000-8000-000000000007",
+      "roles": [
+        "Finance.Approver"
+      ],
+      "region": "US",
+      "group": "Refunds",
+      "persona": "Approves refunds"
+    },
+    {
+      "username": "flags.engineer",
+      "name": "Engineer",
+      "oid": "00000000-0000-4000-8000-000000000008",
+      "roles": [
+        "Eng.Engineer"
+      ],
+      "region": "US",
+      "group": "Feature flags",
+      "persona": "Creates and edits feature flags"
+    },
+    {
+      "username": "flags.pm",
+      "name": "Product Manager",
+      "oid": "00000000-0000-4000-8000-000000000009",
+      "roles": [
+        "Eng.PM"
+      ],
+      "region": "US",
+      "group": "Feature flags",
+      "persona": "Edits flags (automated tests only)",
+      "hidden": true
+    },
+    {
+      "username": "platform.admin",
+      "name": "Platform Admin",
+      "oid": "00000000-0000-4000-8000-000000000010",
+      "roles": [
+        "Platform.Admin"
+      ],
+      "region": "US",
+      "group": "Admin",
+      "persona": "Approves production flag changes, job admin"
+    },
+    {
+      "username": "auditor",
+      "name": "Auditor",
+      "oid": "00000000-0000-4000-8000-000000000011",
+      "roles": [
+        "Audit.Auditor"
+      ],
+      "region": "US",
+      "group": "Admin",
+      "persona": "Read-only across every tool, audit and evidence export"
+    },
+    {
+      "username": "complaints.handler",
+      "name": "Complaints Handler",
+      "oid": "00000000-0000-4000-8000-000000000012",
+      "roles": [
+        "Complaints.Handler"
+      ],
+      "region": "US",
+      "group": "Complaints",
+      "persona": "Works complaints through each stage"
+    },
+    {
+      "username": "complaints.handler2",
+      "name": "Complaints Handler 2",
+      "oid": "00000000-0000-4000-8000-000000000013",
+      "roles": [
+        "Complaints.Handler"
+      ],
+      "region": "US",
+      "group": "Complaints",
+      "persona": "Second handler (automated tests only)",
+      "hidden": true
+    },
+    {
+      "username": "ap.clerk",
+      "name": "AP Clerk",
+      "oid": "00000000-0000-4000-8000-000000000014",
+      "roles": [
+        "AP.Clerk"
+      ],
+      "region": "US",
+      "group": "AP invoices",
+      "persona": "Uploads and verifies invoices, requests bank changes"
+    },
+    {
+      "username": "ap.approver",
+      "name": "AP Approver",
+      "oid": "00000000-0000-4000-8000-000000000015",
+      "roles": [
+        "AP.Approver"
+      ],
+      "region": "US",
+      "group": "AP invoices",
+      "persona": "Tier 1 invoice approval, bank-change call-back"
+    },
+    {
+      "username": "finance.controller",
+      "name": "Financial Controller",
+      "oid": "00000000-0000-4000-8000-000000000016",
+      "roles": [
+        "AP.Approver",
+        "Finance.Controller"
+      ],
+      "region": "US",
+      "group": "AP invoices",
+      "persona": "Tier 2 approval, final bank-change approval, refund reconciliation"
+    },
+    {
+      "username": "overage.user",
+      "name": "Groups Overage User",
+      "oid": "00000000-0000-4000-8000-000000000017",
+      "roles": [],
+      "region": "US",
+      "group": "Admin",
+      "persona": "More than 200 groups and no app roles (automated tests only)",
+      "overage": true,
+      "hidden": true
+    }
   ]
 }

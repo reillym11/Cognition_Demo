@@ -1888,6 +1888,22 @@
        ],
        "title": "Return To"
       }
+     },
+     {
+      "in": "query",
+      "name": "login_hint",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Login Hint"
+      }
      }
     ],
     "responses": {

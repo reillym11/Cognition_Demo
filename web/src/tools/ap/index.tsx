@@ -21,7 +21,7 @@ type Invoice = {
 const TONE: Record<string, "slate" | "green" | "red" | "amber" | "blue"> = {
   needs_verification: "amber", exception: "red", duplicate: "slate", matched: "blue", pending_approval: "amber", approved: "green", batched: "green", rejected: "slate",
 };
-const money = (c: number | null | undefined) => (c == null ? "—" : cents(c));
+const money = (c: number | null | undefined) => (c == null ? "---" : cents(c));
 const EXTRACT_TO_COL: Record<string, string> = { subtotal: "subtotal_cents", tax: "tax_cents", total: "total_cents" };
 
 function Queue() {
@@ -66,7 +66,7 @@ function Queue() {
           { key: "id", label: "#" }, { key: "vendor_name", label: "Vendor" }, { key: "invoice_number", label: "Invoice" },
           { key: "total_cents", label: "Total", render: (r) => money(r.total_cents) },
           { key: "status", label: "Status", render: (r) => <Badge tone={TONE[r.status]}>{r.status}</Badge> },
-          { key: "issues", label: "Issues", render: (r) => (r.match.issues ?? []).join(", ") || "—" },
+          { key: "issues", label: "Issues", render: (r) => (r.match.issues ?? []).join(", ") || "---" },
           { key: "source", label: "Source" }, { key: "created_at", label: "Received", render: (r) => dt(r.created_at) },
         ]}
       />
@@ -121,13 +121,13 @@ function Detail() {
         <div className="space-y-4">
           <Card title="Extracted">
             <KeyValues rows={[
-              ["Vendor", inv.vendor_name ?? "—"], ["Invoice", inv.invoice_number ?? "—"], ["Dates", `${inv.invoice_date ?? "?"} → due ${inv.due_date ?? "?"}`],
-              ["PO", inv.po ? `${inv.po.po_number} (remaining ${money(inv.po.amount_cents - inv.po.invoiced_cents)})` : inv.po_number ?? "—"],
+              ["Vendor", inv.vendor_name ?? "---"], ["Invoice", inv.invoice_number ?? "---"], ["Dates", `${inv.invoice_date ?? "?"} → due ${inv.due_date ?? "?"}`],
+              ["PO", inv.po ? `${inv.po.po_number} (remaining ${money(inv.po.amount_cents - inv.po.invoiced_cents)})` : inv.po_number ?? "---"],
               ["Subtotal / tax / total", `${money(inv.subtotal_cents)} / ${money(inv.tax_cents)} / ${money(inv.total_cents)}`],
               ["Remit to", <>{inv.remit_bank_name} · acct {inv.remit_account} · routing {inv.remit_routing}</>],
               ["On file", inv.vendor ? <>acct <MaskedField field="bank_account" value={inv.vendor.bank_account} revealUrl={`/api/ap/vendors/${inv.vendor.id}/reveal`} canReveal={false} /></> : "unknown vendor"],
               ["Issues", (inv.match.issues ?? []).map((i) => <Badge key={i} tone="red">{i}</Badge>)],
-              ["Duplicate of", inv.duplicate_of ? <a className="text-blue-700 underline" href={`/ap/invoices/${inv.duplicate_of}`}>#{inv.duplicate_of}</a> : "—"],
+              ["Duplicate of", inv.duplicate_of ? <a className="text-blue-700 underline" href={`/ap/invoices/${inv.duplicate_of}`}>#{inv.duplicate_of}</a> : "---"],
             ]} />
             <Table size="small" className="mt-2 min-w-full text-xs"><TableBody>{inv.line_items.map((l, i) => <TableRow key={i} className="border-t"><TableCell>{l.description}</TableCell><TableCell>{l.quantity}</TableCell><TableCell>{money(l.unit_cents)}</TableCell><TableCell>{money(l.amount_cents)}</TableCell></TableRow>)}</TableBody></Table>
           </Card>
@@ -178,7 +178,7 @@ function BankChangeDetail() {
     <Page subtitle="Vendor bank change" title={`Bank change #${b.id} · ${b.vendor_name}`} status={<Badge tone="amber">{b.status}</Badge>}>
       <Card title="Change">
         <KeyValues rows={[["Current", `${b.current?.bank_name} · acct ${b.current?.bank_account}`], ["Requested", `${b.new_bank_name} · acct ${b.new_account} · routing ${b.new_routing}`],
-          ["Requested by", `${b.requested_by_name}: ${b.request_reason}`], ["Phone on file", b.phone_on_file], ["Call-back notes", b.callback_notes ?? "—"]]} />
+          ["Requested by", `${b.requested_by_name}: ${b.request_reason}`], ["Phone on file", b.phone_on_file], ["Call-back notes", b.callback_notes ?? "---"]]} />
       </Card>
       {b.can?.callback && (
         <Card title="Record call-back">

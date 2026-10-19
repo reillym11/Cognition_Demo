@@ -33,7 +33,7 @@ def seed(db: Session, scale: float = 1.0) -> None:
         f = Flag(
             key=key,
             description=f"Synthetic flag for {key.replace('.', ' ')}",
-            owner=rng.choice(["Erin Engineer", "Pat PM"]),
+            owner=rng.choice(["Engineer", "Product Manager"]),
             created_by="seed",
             created_at=now - timedelta(days=rng.randint(5, 200)),
         )

@@ -54,7 +54,7 @@ def make_txn(amount_cents: int = 100_000, region: str = "US") -> int:
         return t.id
 
 
-def request(txn: int, cents: int, who: str = "alex.agent") -> int:
+def request(txn: int, cents: int, who: str = "support.agent") -> int:
     with session_scope() as db:
         return service.request_refund(db, principal(who), txn, cents, "GOODWILL", "customer goodwill").id
 
@@ -87,11 +87,11 @@ def test_over_threshold_needs_different_approver():
     with session_scope() as db:
         req_id = db.get(Refund, rid).approval_request_id
     with session_scope() as db, pytest.raises(Forbidden):
-        approvals.decide(db, principal("alex.agent"), req_id, "approve", "my own")
+        approvals.decide(db, principal("support.agent"), req_id, "approve", "my own")
     with session_scope() as db, pytest.raises(Forbidden):
-        approvals.decide(db, principal("cora.compliance"), req_id, "approve", "not finance")
+        approvals.decide(db, principal("compliance.admin"), req_id, "approve", "not finance")
     with session_scope() as db:
-        approvals.decide(db, principal("fin.approver"), req_id, "approve", "verified with customer")
+        approvals.decide(db, principal("finance.approver"), req_id, "approve", "verified with customer")
     run_jobs()
     assert status(rid) == "succeeded"
 
@@ -114,7 +114,7 @@ def test_rejection_releases_reservation():
     rid = request(txn, 70_000)
     with session_scope() as db:
         req_id = db.get(Refund, rid).approval_request_id
-        approvals.decide(db, principal("fin.approver"), req_id, "reject", "no evidence")
+        approvals.decide(db, principal("finance.approver"), req_id, "reject", "no evidence")
     assert status(rid) == "rejected"
     with session_scope() as db:
         assert service.reserved_cents(db, txn) == 0
@@ -124,23 +124,23 @@ def test_rejection_releases_reservation():
 def test_validation():
     txn = make_txn()
     with session_scope() as db, pytest.raises(Invalid):
-        service.request_refund(db, principal("alex.agent"), txn, 0, "GOODWILL", "zero")
+        service.request_refund(db, principal("support.agent"), txn, 0, "GOODWILL", "zero")
     with session_scope() as db, pytest.raises(Invalid):
-        service.request_refund(db, principal("alex.agent"), txn, 100, "BECAUSE", "bad code")
+        service.request_refund(db, principal("support.agent"), txn, 100, "BECAUSE", "bad code")
     with session_scope() as db, pytest.raises(Invalid):
-        service.request_refund(db, principal("alex.agent"), txn, 100, "GOODWILL", "")
+        service.request_refund(db, principal("support.agent"), txn, 100, "GOODWILL", "")
     with session_scope() as db, pytest.raises(Invalid):
-        service.request_refund(db, principal("alex.agent"), txn, 10.5, "GOODWILL", "float")
+        service.request_refund(db, principal("support.agent"), txn, 10.5, "GOODWILL", "float")
 
 
 def test_contractor_always_needs_approval_and_sees_masked_pii():
     txn = make_txn(region="EU")
-    assert status(request(txn, 500, who="casey.contractor")) == "pending_approval"
+    assert status(request(txn, 500, who="support.contractor")) == "pending_approval"
     with session_scope() as db:
-        d = service.txn_dict(service.get_txn(db, principal("casey.contractor"), txn))
+        d = service.txn_dict(service.get_txn(db, principal("support.contractor"), txn))
         assert d["customer_email"] != "pat@example.com"
     with session_scope() as db, pytest.raises(Forbidden):
-        service.reveal(db, principal("casey.contractor"), txn, "customer_email", "curious")
+        service.reveal(db, principal("support.contractor"), txn, "customer_email", "curious")
 
 
 def test_velocity_flag_forces_approval():
@@ -160,7 +160,7 @@ def test_lost_response_reconciles_without_double_refund():
     jobs.run_until_idle()
     assert status(rid) == "unknown"
     with session_scope() as db:
-        charge = service.get_txn(db, principal("alex.agent"), txn).charge_id
+        charge = service.get_txn(db, principal("support.agent"), txn).charge_id
     assert processor_count(charge) == 1  # it happened, we just didn't hear back
     with session_scope() as db:
         assert service.reserved_cents(db, txn) == 10_000  # unknown still reserves
@@ -178,7 +178,7 @@ def test_5xx_before_processing_reconciles_then_resends_once():
     run_jobs()
     assert status(rid) == "succeeded"
     with session_scope() as db:
-        charge = service.get_txn(db, principal("alex.agent"), txn).charge_id
+        charge = service.get_txn(db, principal("support.agent"), txn).charge_id
     assert processor_count(charge) == 1
 
 
@@ -250,7 +250,7 @@ def test_property_reserved_never_exceeds_captured(amounts, captured):
 
 def test_api_masks_and_enforces(login):
     txn = make_txn()
-    agent = login("alex.agent")
+    agent = login("support.agent")
     r = agent.get(f"/api/refunds/transactions/{txn}")
     assert r.status_code == 200 and r.json()["transaction"]["customer_email"] != "pat@example.com"
     r = agent.post(
@@ -259,7 +259,7 @@ def test_api_masks_and_enforces(login):
     )
     assert r.status_code == 200, r.text
     assert (
-        login("aud.auditor")
+        login("auditor")
         .post(
             f"/api/refunds/transactions/{txn}/refunds",
             json={"amount_cents": 1, "reason_code": "GOODWILL", "reason": "x y z"},
@@ -267,13 +267,13 @@ def test_api_masks_and_enforces(login):
         .status_code
         == 403
     )
-    assert login("erin.engineer").get("/api/refunds/requests").status_code == 403
+    assert login("flags.engineer").get("/api/refunds/requests").status_code == 403
 
 
 def test_contractor_region_row_scope(login):
     eu, us = make_txn(region="EU"), make_txn(region="US")
     eu_rid, us_rid = request(eu, 500), request(us, 700)
-    casey = login("casey.contractor")
+    casey = login("support.contractor")
 
     txns = casey.get("/api/refunds/transactions").json()
     assert {t["id"] for t in txns["items"]} == {eu} and txns["total"] == 1
@@ -297,7 +297,7 @@ def test_contractor_region_row_scope(login):
     assert casey.get(f"/api/refunds/requests/{us_rid}/audit").status_code == 404
     assert sum(s["count"] for s in casey.get("/api/refunds/stats").json().values()) == 1
 
-    agent = login("alex.agent")
+    agent = login("support.agent")
     assert agent.get("/api/refunds/transactions").json()["total"] == 2
     assert agent.get(f"/api/refunds/requests/{us_rid}").status_code == 200
     assert sum(s["count"] for s in agent.get("/api/refunds/stats").json().values()) == 2
@@ -305,7 +305,7 @@ def test_contractor_region_row_scope(login):
 
 def test_missing_region_sees_nothing():
     txn = make_txn(region="EU")
-    p = dataclasses.replace(principal("casey.contractor"), region=None)
+    p = dataclasses.replace(principal("support.contractor"), region=None)
     with session_scope() as db, pytest.raises(NotFound):
         service.get_txn(db, p, txn)
     with session_scope() as db, pytest.raises(NotFound):
