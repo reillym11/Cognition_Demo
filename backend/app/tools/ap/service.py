@@ -56,6 +56,16 @@ def norm_number(n: str | None) -> str | None:
     return re.sub(r"(?<!\d)0+(?=\d)", "", s) or None
 
 
+def _extraction_summary(ex: dict[str, Any]) -> dict[str, Any]:
+    """Engine, warnings and per-field confidence only: raw extracted values (incl. remit bank details) stay
+    server-side; the verified values are the masked top-level columns."""
+    return {
+        "engine": ex.get("engine"),
+        "warnings": ex.get("warnings", []),
+        "fields": [{"field": k, "confidence": f.get("confidence")} for k, f in ex.get("fields", {}).items()],
+    }
+
+
 def to_dict(i: Invoice) -> dict[str, Any]:
     d = {
         c: getattr(i, c)
@@ -74,7 +84,6 @@ def to_dict(i: Invoice) -> dict[str, Any]:
             "remit_bank_name",
             "remit_account",
             "remit_routing",
-            "extraction",
             "line_items",
             "match",
             "duplicate_of",
@@ -86,6 +95,7 @@ def to_dict(i: Invoice) -> dict[str, Any]:
             "sha256",
         )
     }
+    d["extraction"] = _extraction_summary(i.extraction)
     d["invoice_date"] = i.invoice_date.isoformat() if i.invoice_date else None
     d["due_date"] = i.due_date.isoformat() if i.due_date else None
     d["created_at"] = i.created_at.isoformat()

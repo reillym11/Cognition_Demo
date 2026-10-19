@@ -8,11 +8,11 @@ import {
 } from "../../ui/kit";
 import type { ToolRoute } from "../registry";
 
-type FieldX = { value: unknown; confidence: number };
+type FieldConfidence = { field: string; confidence: number };
 type Invoice = {
   id: number; status: string; source: string; vendor_name: string | null; invoice_number: string | null; invoice_date: string | null; due_date: string | null;
   po_number: string | null; subtotal_cents: number | null; tax_cents: number | null; total_cents: number | null; remit_bank_name: string | null;
-  remit_account: string | null; remit_routing: string | null; extraction: { engine: string; warnings: string[]; fields: Record<string, FieldX> };
+  remit_account: string | null; remit_routing: string | null; extraction: { engine: string; warnings: string[]; fields: FieldConfidence[] };
   line_items: { description: string; quantity: number; unit_cents: number; amount_cents: number }[]; match: { issues?: string[]; po_remaining_cents?: number | null };
   duplicate_of: number | null; vendor_id: number | null; created_at: string; batch_id: number | null;
   approval?: Approval | null; vendor?: { id: number; name: string; bank_account: string; bank_routing: string; phone_on_file: string } | null;
@@ -76,7 +76,10 @@ function Queue() {
 
 function VerifyForm({ inv, onDone }: { inv: Invoice; onDone: () => void }) {
   const editable = ["vendor_name", "invoice_number", "invoice_date", "due_date", "po_number", "subtotal_cents", "tax_cents", "total_cents", "remit_bank_name", "remit_account", "remit_routing"];
-  const conf = (k: string) => inv.extraction.fields[Object.entries(EXTRACT_TO_COL).find(([, v]) => v === k)?.[0] ?? k]?.confidence ?? 1;
+  const conf = (k: string) => {
+    const name = Object.entries(EXTRACT_TO_COL).find(([, v]) => v === k)?.[0] ?? k;
+    return inv.extraction.fields.find((f) => f.field === name)?.confidence ?? 1;
+  };
   const [vals, setVals] = useState<Record<string, string>>({});
   return (
     <Card title="Verify extracted fields">
