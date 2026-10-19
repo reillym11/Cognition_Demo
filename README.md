@@ -71,7 +71,7 @@ Each role can do something no other role can.
 | Support Agent | Request a refund over $500 |
 | Outsourced Support (EU) | See only EU merchants' refunds, with customer details masked |
 | Financial Controller | Approve refunds and tier 2 invoices, give final approval on bank-detail changes |
-| AP Clerk | Verify extracted invoice fields, request a bank-detail change |
+| AP Clerk | Upload an invoice PDF, verify the extracted fields, request a bank-detail change |
 | AP Approver | Approve tier 1 invoices, confirm bank changes by call-back |
 | Complaints Handler | Work a complaint through its stages |
 | Engineer | Create a flag and request a production change |
