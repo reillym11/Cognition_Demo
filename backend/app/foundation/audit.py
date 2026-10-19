@@ -124,7 +124,12 @@ class VerifyResult:
 def verify_chain(db: Session, chain: str) -> VerifyResult:
     prev = GENESIS
     n = 0
-    rows = db.execute(select(AuditEvent).where(AuditEvent.chain == chain).order_by(AuditEvent.seq)).scalars()
+    rows = db.execute(
+        select(AuditEvent)
+        .where(AuditEvent.chain == chain)
+        .order_by(AuditEvent.seq)
+        .execution_options(yield_per=1000)
+    ).scalars()
     for e in rows:
         n += 1
         if e.prev_hash != prev:
